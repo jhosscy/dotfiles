@@ -244,6 +244,12 @@ install_pi_extensions() {
     return 0
   fi
 
+  local powerline_ext="$DOTFILES_DIR/pi/extensions/pi-powerline-footer"
+  if [[ -d "$powerline_ext" && -f "$powerline_ext/package.json" ]]; then
+    log "Instalando dependencias Bun: $powerline_ext"
+    (cd "$powerline_ext" && bun install) || warn "Falló bun install en: $powerline_ext"
+  fi
+
   local ext
   for ext in \
     "$DOTFILES_DIR/pi/extensions/pi-powerline-footer" \
