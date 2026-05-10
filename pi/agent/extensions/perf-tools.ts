@@ -7,7 +7,7 @@ import type { ExtensionAPI, ReadToolDetails, ReadToolInput, TruncationResult } f
 // Runtime imports use the installed global package path because globally discovered
 // extensions are outside pi's package tree and cannot reliably resolve pi's runtime deps by package name.
 // @ts-ignore - absolute runtime import for this local pi installation.
-import { createReadTool } from "/home/jhosscy/.bun/install/global/node_modules/@earendil-works/pi-coding-agent/dist/index.js";
+import { createReadTool } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_MAX_LINES = Number.MAX_SAFE_INTEGER;
 const DEFAULT_MAX_BYTES = Number.MAX_SAFE_INTEGER;

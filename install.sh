@@ -136,15 +136,14 @@ patch_pi_shebang() {
     return 0
   fi
 
-  local pi_bin
-  pi_bin="$(command -v pi)"
+  local pi_bin first_line
+  pi_bin="$(readlink -f "$(command -v pi)")"
 
   if [[ ! -f "$pi_bin" || ! -w "$pi_bin" ]]; then
     warn "No puedo modificar shebang de pi: $pi_bin"
     return 0
   fi
 
-  local first_line
   first_line="$(head -n 1 "$pi_bin")"
   if [[ "$first_line" == "#!/usr/bin/env node" ]]; then
     sed -i '1s|^#!/usr/bin/env node$|#!/usr/bin/env bun|' "$pi_bin"
