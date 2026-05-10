@@ -1,4 +1,5 @@
 {
+  "lastChangelogVersion": "0.74.0",
   "compaction": {
     "enabled": false
   },
@@ -17,9 +18,6 @@
   "showLastPrompt": false,
   "quietStartup": true,
   "packages": [
-    "npm:context-mode",
-    "../../desk/projects/dev-tools/pi-powerline-footer",
-    "../../desk/projects/dev-tools/pi-mcp-adapter",
-    "../../desk/projects/dev-tools/pi-vim-editor"
+    "npm:context-mode"
   ]
 }

@@ -166,6 +166,25 @@ install_tpm() {
   fi
 }
 
+install_pi_extensions() {
+  if ! need_cmd pi; then
+    warn "pi no disponible; salto instalación de extensiones."
+    return 0
+  fi
+
+  local ext
+  for ext in \
+    "$DOTFILES_DIR/pi/extensions/pi-powerline-footer" \
+    "$DOTFILES_DIR/pi/extensions/pi-mcp-adapter" \
+    "$DOTFILES_DIR/pi/extensions/pi-vim-editor"
+  do
+    if [[ -d "$ext" ]]; then
+      log "Instalando extensión Pi: $ext"
+      pi install "$ext" || warn "Falló instalación de extensión: $ext"
+    fi
+  done
+}
+
 install_zim() {
   if need_cmd zsh; then
     log "Instalando/actualizando módulos Zim..."
@@ -207,11 +226,29 @@ main() {
   link_path "$DOTFILES_DIR/zsh/.zimrc" "$HOME/.zimrc"
   link_path "$DOTFILES_DIR/zsh/config/zsh" "$HOME/.config/zsh"
   link_path "$DOTFILES_DIR/git/.gitconfig" "$HOME/.gitconfig"
-  link_path "$DOTFILES_DIR/pi/agent" "$HOME/.pi/agent"
-  link_path "$DOTFILES_DIR/pi/extensions" "$HOME/.pi/extensions"
+
+  # Pi mezcla config con estado local/auth/sesiones. No linkear ~/.pi/agent completo.
+  if [[ -L "$HOME/.pi/agent" ]]; then
+    rm "$HOME/.pi/agent"
+  fi
+  mkdir -p "$HOME/.pi/agent"
+  link_path "$DOTFILES_DIR/pi/agent/settings.json" "$HOME/.pi/agent/settings.json"
+  link_path "$DOTFILES_DIR/pi/agent/keybindings.json" "$HOME/.pi/agent/keybindings.json"
+  link_path "$DOTFILES_DIR/pi/agent/models.json" "$HOME/.pi/agent/models.json"
+  link_path "$DOTFILES_DIR/pi/agent/mcp.json" "$HOME/.pi/agent/mcp.json"
+  link_path "$DOTFILES_DIR/pi/agent/extensions" "$HOME/.pi/agent/extensions"
+
+  # Las extensiones locales viven en dotfiles/pi/extensions y se instalan con `pi install <ruta>`.
+  # No se linkea ~/.pi/extensions porque Pi usa esa carpeta para paquetes instalados/estado local.
+  if [[ -L "$HOME/.pi/extensions" ]]; then
+    rm "$HOME/.pi/extensions"
+    log "Eliminado symlink viejo: $HOME/.pi/extensions"
+  fi
+
   link_path "$DOTFILES_DIR/nnn" "$HOME/.config/nnn"
 
   install_bun_and_pi
+  install_pi_extensions
   install_tpm
   install_zim
   change_shell_hint
