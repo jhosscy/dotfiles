@@ -131,6 +131,19 @@ setup_fd() {
   fi
 }
 
+install_fzf_latest() {
+  if [[ ! -d "$HOME/.fzf/.git" ]]; then
+    rm -rf "$HOME/.fzf"
+    git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
+    log "fzf clonado en $HOME/.fzf"
+  else
+    git -C "$HOME/.fzf" pull --ff-only || warn "No pude actualizar fzf en $HOME/.fzf"
+  fi
+
+  "$HOME/.fzf/install" --all
+  log "fzf instalado desde git"
+}
+
 patch_pi_shebang() {
   if ! need_cmd pi; then
     return 0
@@ -242,10 +255,12 @@ main() {
   install_apt_packages
   install_neovim_latest
   setup_fd
+  install_fzf_latest
 
   log "Creando symlinks..."
   link_path "$DOTFILES_DIR/nvim" "$HOME/.config/nvim"
   link_path "$DOTFILES_DIR/tmux/.tmux.conf" "$HOME/.tmux.conf"
+  link_path "$DOTFILES_DIR/zsh/.zshenv" "$HOME/.zshenv"
   link_path "$DOTFILES_DIR/zsh/.zshrc" "$HOME/.zshrc"
   link_path "$DOTFILES_DIR/zsh/.zimrc" "$HOME/.zimrc"
   link_path "$DOTFILES_DIR/zsh/config/zsh" "$HOME/.config/zsh"
