@@ -70,7 +70,6 @@ install_apt_packages() {
     git
     zsh
     tmux
-    fzf
     ripgrep
     fd-find
     xclip
@@ -141,7 +140,15 @@ install_fzf_latest() {
   fi
 
   "$HOME/.fzf/install" --all
-  log "fzf instalado desde git"
+
+  # Ubuntu 22.04 trae fzf viejo en /usr/bin sin --tmux.
+  # Forzamos que ~/.local/bin gane en PATH y apunte al fzf recién instalado.
+  mkdir -p "$HOME/.local/bin"
+  ln -sfn "$HOME/.fzf/bin/fzf" "$HOME/.local/bin/fzf"
+  export PATH="$HOME/.local/bin:$PATH"
+  hash -r 2>/dev/null || true
+
+  log "fzf instalado desde git: $($HOME/.local/bin/fzf --version)"
 }
 
 patch_pi_shebang() {
