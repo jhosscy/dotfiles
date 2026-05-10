@@ -1,0 +1,12 @@
+{
+  "name": "pi-vim-editor",
+  "version": "0.1.0",
+  "description": "Optional Vim-style modal editor for pi",
+  "type": "module",
+  "keywords": ["pi-package", "pi", "coding-agent", "vim", "editor"],
+  "license": "MIT",
+  "files": ["*.ts", "README.md"],
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "tui.select.up": "ctrl+k",
+  "tui.select.down": "ctrl+j",
+  "app.clipboard.pasteImage": ["alt+v"]
+}

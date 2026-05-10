@@ -1,0 +1,25 @@
+{
+  "compaction": {
+    "enabled": false
+  },
+  "showHardwareCursor": false,
+  "editorPaddingX": 0,
+  "theme": "dark",
+  "hideThinkingBlock": false,
+  "npmCommand": [
+    "bun"
+  ],
+  "pi-screenshots": {
+    "sources": []
+  },
+  "powerline": "lucy-cost",
+  "powerlineVimMode": true,
+  "showLastPrompt": false,
+  "quietStartup": true,
+  "packages": [
+    "npm:context-mode",
+    "../../desk/projects/dev-tools/pi-powerline-footer",
+    "../../desk/projects/dev-tools/pi-mcp-adapter",
+    "../../desk/projects/dev-tools/pi-vim-editor"
+  ]
+}

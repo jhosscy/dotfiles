@@ -1,0 +1,79 @@
+{
+  "providers": {
+    "novita": {
+      "baseUrl": "https://api.novita.ai/openai/v1",
+      "api": "openai-completions",
+      "apiKey": "NOVITA_API_KEY",
+      "models": [
+        {
+          "id": "moonshotai/kimi-k2.6",
+          "name": "Kimi K2.6",
+          "input": ["text", "image"],
+          "contextWindow": 262144,
+          "maxTokens": 262144,
+          "cost": {
+            "input": 0.95,
+            "output": 4,
+            "cacheRead": 0.16,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    },
+    "modal": {
+      "baseUrl": "https://jhosscy--qwen36-llamacpp-llamacppserver.us-east.modal.direct/v1",
+      "api": "openai-completions",
+      "apiKey": "dummy",
+      "models": [
+        {
+          "id": "unsloth/Qwen3.6-27B-Uncensored",
+          "name": "Qwen3.6 27B",
+          "input": ["text", "image"],
+          "contextWindow": 262144,
+          "maxTokens": 262144
+        }
+      ]
+    },
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com",
+      "api": "openai-completions",
+      "apiKey": "DEEPSEEK_API_KEY",
+      "models": [
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 1048576,
+          "maxTokens": 393216,
+          "cost": {
+            "input": 0.435,
+            "output": 0.87,
+            "cacheRead": 0.003625,
+            "cacheWrite": 0
+          },
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": "max"
+          }
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 1048576,
+          "maxTokens": 393216,
+          "cost": {
+            "input": 0.14,
+            "output": 0.28,
+            "cacheRead": 0.0028,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    }
+}
