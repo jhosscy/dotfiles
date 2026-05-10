@@ -1,0 +1,9 @@
+.git
+.gitignore
+.dockerignore
+**/.DS_Store
+**/node_modules
+**/.cache
+**/.pytest_cache
+**/dist
+**/build
