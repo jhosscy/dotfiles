@@ -69,13 +69,16 @@ install_apt_packages() {
     unzip
     git
     zsh
-    tmux
     ripgrep
     fd-find
     xclip
     wl-clipboard
     nnn
     build-essential
+    pkg-config
+    libevent-dev
+    libncurses-dev
+    bison
     python3
   )
 
@@ -91,6 +94,31 @@ install_apt_packages() {
       warn "Paquete no disponible en apt: $pkg"
     fi
   done
+}
+
+install_tmux_latest() {
+  local wanted="3.6a"
+
+  if need_cmd tmux && [[ "$(tmux -V 2>/dev/null | awk '{print $2}')" == "$wanted" ]]; then
+    log "tmux $wanted ya instalado: $(command -v tmux)"
+    return 0
+  fi
+
+  log "Instalando tmux $wanted desde source..."
+  local tmp
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://github.com/tmux/tmux/releases/download/$wanted/tmux-$wanted.tar.gz" -o "$tmp/tmux-$wanted.tar.gz"
+  tar -xzf "$tmp/tmux-$wanted.tar.gz" -C "$tmp"
+
+  (
+    cd "$tmp/tmux-$wanted"
+    ./configure
+    make -j"$(nproc)"
+    sudo make install
+  )
+
+  rm -rf "$tmp"
+  log "tmux instalado: $(command -v tmux) ($(tmux -V))"
 }
 
 install_neovim_latest() {
@@ -260,6 +288,7 @@ main() {
   log "Home: $HOME"
 
   install_apt_packages
+  install_tmux_latest
   install_neovim_latest
   setup_fd
   install_fzf_latest
