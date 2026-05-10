@@ -131,6 +131,29 @@ setup_fd() {
   fi
 }
 
+patch_pi_shebang() {
+  if ! need_cmd pi; then
+    return 0
+  fi
+
+  local pi_bin
+  pi_bin="$(command -v pi)"
+
+  if [[ ! -f "$pi_bin" || ! -w "$pi_bin" ]]; then
+    warn "No puedo modificar shebang de pi: $pi_bin"
+    return 0
+  fi
+
+  local first_line
+  first_line="$(head -n 1 "$pi_bin")"
+  if [[ "$first_line" == "#!/usr/bin/env node" ]]; then
+    sed -i '1s|^#!/usr/bin/env node$|#!/usr/bin/env bun|' "$pi_bin"
+    log "Patch pi shebang: $pi_bin -> bun"
+  else
+    log "Pi shebang OK: $first_line"
+  fi
+}
+
 install_bun_and_pi() {
   export BUN_INSTALL="$HOME/.bun"
   export PATH="$BUN_INSTALL/bin:$HOME/.local/bin:$PATH"
@@ -149,6 +172,8 @@ install_bun_and_pi() {
   else
     log "Pi agent ya instalado: $(command -v pi)"
   fi
+
+  patch_pi_shebang
 }
 
 install_tpm() {
