@@ -1,23 +1,59 @@
--- Directory where Neovim looks for optional packages
-local pack_path = vim.fn.stdpath("data") .. "/site/pack/plugins/opt/"
+-- Neovim 0.12 native plugin manager.
+-- Plugins are installed/registered during startup, but not eagerly loaded while
+-- init.lua is being sourced. Each consumer still loads its plugin with :packadd.
+vim.pack.add({
+  { src = "https://github.com/nvim-mini/mini.pairs.git", name = "mini.pairs" },
+  { src = "https://github.com/nvim-mini/mini.indentscope.git", name = "mini.indentscope" },
+  { src = "https://github.com/nvim-mini/mini.completion.git", name = "mini.completion" },
+  { src = "https://github.com/nvim-mini/mini.snippets.git", name = "mini.snippets" },
+  { src = "https://github.com/nvim-mini/mini.icons.git", name = "mini.icons" },
+  { src = "https://github.com/nvim-lualine/lualine.nvim.git", name = "lualine.nvim" },
+  { src = "https://github.com/ibhagwan/fzf-lua.git", name = "fzf-lua" },
+}, {
+  confirm = false,
+})
 
--- Function to install a plugin if it doesn't exist
--- NOTE: We intentionally do NOT 'packadd' here. Each consumer loads its own
--- plugin lazily when needed, keeping startup time minimal.
-local function ensure_plugin(name, url)
-  local install_path = pack_path .. name
-  if vim.fn.empty(vim.fn.glob(install_path)) > 0 then
-    vim.notify("Installing " .. name .. "...")
-    vim.fn.system({ "git", "clone", "--depth", "1", url, install_path })
-    vim.notify(name .. " installed.")
+local function pack_names(args)
+  if args == "" then
+    return nil
   end
+  return vim.split(args, "%s+", { trimempty = true })
 end
 
--- List of plugins (only auto-install, no eager loading)
-ensure_plugin("mini.pairs", "https://github.com/nvim-mini/mini.pairs.git")
-ensure_plugin("mini.indentscope", "https://github.com/nvim-mini/mini.indentscope.git")
-ensure_plugin("mini.completion", "https://github.com/nvim-mini/mini.completion.git")
-ensure_plugin("mini.snippets", "https://github.com/nvim-mini/mini.snippets.git")
-ensure_plugin("mini.icons", "https://github.com/nvim-mini/mini.icons.git")
-ensure_plugin("lualine.nvim", "https://github.com/nvim-lualine/lualine.nvim.git")
-ensure_plugin("fzf-lua", "https://github.com/ibhagwan/fzf-lua.git")
+vim.api.nvim_create_user_command("PackUpdate", function(opts)
+  vim.pack.update(pack_names(opts.args), { force = opts.bang })
+end, {
+  bang = true,
+  nargs = "*",
+  complete = function()
+    return vim.tbl_map(function(plugin)
+      return plugin.spec.name
+    end, vim.pack.get(nil, { info = false }))
+  end,
+  desc = "Update plugins managed by vim.pack. Use ! to skip confirmation.",
+})
+
+vim.api.nvim_create_user_command("PackUpdateOffline", function(opts)
+  vim.pack.update(pack_names(opts.args), { force = opts.bang, offline = true })
+end, {
+  bang = true,
+  nargs = "*",
+  complete = function()
+    return vim.tbl_map(function(plugin)
+      return plugin.spec.name
+    end, vim.pack.get(nil, { info = false }))
+  end,
+  desc = "Open vim.pack update view without fetching. Use ! to apply immediately.",
+})
+
+vim.api.nvim_create_user_command("PackList", function()
+  local lines = vim.tbl_map(function(plugin)
+    local state = plugin.active and "active" or "inactive"
+    local rev = plugin.rev and plugin.rev:sub(1, 8) or "????????"
+    return string.format("%-20s %-8s %s %s", plugin.spec.name, state, rev, plugin.path)
+  end, vim.pack.get(nil, { info = false }))
+
+  vim.api.nvim_echo({ { table.concat(lines, "\n") } }, false, {})
+end, {
+  desc = "List plugins managed by vim.pack.",
+})

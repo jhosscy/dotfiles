@@ -27,7 +27,7 @@ vim.opt.signcolumn = "yes"      -- Always show the signcolumn (prevents text fro
 vim.opt.laststatus = 3          -- Global statusline: always and ONLY show the statusline on the last window
 vim.opt.showmode = false        -- Don't show mode messages on the last line (e.g., "-- INSERT --")
 vim.opt.showcmd = true          -- Show (partial) command in the last line of the screen
-vim.opt.cmdheight = 1           -- Number of screen lines to use for the command-line
+vim.opt.cmdheight = 0           -- Neovim 0.12 UI2: hide cmdline until needed
 vim.opt.ruler = true            -- Show the line and column number of the cursor position
 vim.opt.scrolloff = 8           -- Minimal number of screen lines to keep above and below the cursor
 vim.opt.sidescrolloff = 8       -- Minimal number of screen columns to keep to the left/right of the cursor
@@ -38,6 +38,11 @@ vim.opt.winblend = 0            -- Enable subtle pseudo-transparency for floatin
 vim.opt.winborder = "rounded"   -- Default border for all floating windows (Hover, Signature, etc.)
 vim.opt.splitbelow = true       -- Splitting a window will put the new window below the current one
 vim.opt.splitright = true       -- Splitting a window will put the new window right of the current one
+
+-- Experimental Neovim 0.12 UI: redesigned messages/cmdline, works better with cmdheight=0
+pcall(function()
+  require('vim._core.ui2').enable()
+end)
 
 -- =====================================================================
 -- FOLDING
@@ -79,10 +84,12 @@ vim.opt.clipboard = "unnamedplus" -- Use the system clipboard (+ register) for a
 -- =====================================================================
 -- COMPLETION (PUM & COMMAND-LINE)
 -- =====================================================================
-vim.opt.completeopt = "menu,menuone,noselect,preview" -- Customize Insert-mode completion menu behavior
+vim.opt.completeopt = "menu,menuone,noselect,popup,fuzzy" -- Neovim 0.12+: popup docs + fuzzy matching
 vim.opt.pumheight = 5           -- Maximum number of items to show in the popup menu
 vim.opt.pumwidth = 15           -- Minimum width for the popup menu
+vim.opt.pummaxwidth = 80        -- Neovim 0.12+: maximum width for the popup menu
 vim.opt.pumblend = 0            -- Enable subtle pseudo-transparency for the completion popup menu
+vim.opt.pumborder = "rounded"   -- Neovim 0.12+: add border to native completion popup menu
 vim.opt.wildmenu = true         -- Enable enhanced command-line completion
 vim.opt.wildmode = "longest:full,full" -- Command-line completion mode: longest common substring, then cycle full matches
 vim.opt.complete = ".,w,b,u,t"  -- Places to scan for completion: current buffer, windows, buffers, unloaded buffers, tags

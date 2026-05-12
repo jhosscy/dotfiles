@@ -24,18 +24,9 @@ vim.keymap.set('n', '<leader>fG', function() lazy_fzf('grep_project') end, { des
 vim.keymap.set('n', '<leader>fk', function() lazy_fzf('builtin') end, { desc = 'Fzf builtin commands', silent = true })
 
 -- ============================================================================
--- nvim.undotree: lazy loader (usa el comando oficial del plugin)
+-- Native :Undotree (Neovim 0.12+)
 -- ============================================================================
-local undotree_loaded = false
-local function toggle_undotree()
-  if not undotree_loaded then
-    undotree_loaded = true
-    vim.cmd('packadd nvim.undotree')  -- carga el plugin y registra :Undotree
-  end
-  vim.cmd('Undotree')                  -- usa el API público del plugin
-end
-
-vim.keymap.set('n', '<leader>u', toggle_undotree, { desc = 'Toggle undo tree', silent = true })
+vim.keymap.set('n', '<leader>u', '<Cmd>Undotree<CR>', { desc = 'Toggle undo tree', silent = true })
 
 -- Exit insert mode with 'ii'
 vim.keymap.set('i', 'ii', '<Esc>', { desc = 'Exit insert mode with ii', silent = true })

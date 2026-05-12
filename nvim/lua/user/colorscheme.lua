@@ -65,6 +65,9 @@ local highlights = {
     FloatBorder  = { fg = c.grey, bg = c.none },
     Pmenu        = { fg = c.fg, bg = c.none },
     PmenuSel     = { fg = c.bg0, bg = c.bg_blue },
+    PmenuBorder  = { fg = c.grey, bg = c.none },
+    PmenuShadow  = { bg = c.bg_d },
+    PmenuShadowThrough = { bg = c.bg_d },
     PmenuSbar    = { bg = c.bg1 },
     PmenuThumb   = { bg = c.grey },
 

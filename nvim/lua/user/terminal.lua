@@ -159,6 +159,8 @@ local function ensure_terminal(id)
     direction = 'float',
     origin = nil,
     display_name = nil,
+    exited = false,
+    exit_code = nil,
   }
   terminals[id] = term
 
@@ -176,15 +178,12 @@ local function start_job(term)
     term.job = vim.fn.jobstart(vim.o.shell, {
       term = true,
       cwd = vim.fn.getcwd(),
-      on_exit = function()
+      on_exit = function(_, code)
         vim.schedule(function()
-          if valid_win(term.win) then
-            pcall(vim.api.nvim_win_close, term.win, true)
-          end
-          if valid_buf(term.buf) then
-            pcall(vim.api.nvim_buf_delete, term.buf, { force = true })
-          end
-          terminals[term.id] = nil
+          term.job = nil
+          term.exited = true
+          term.exit_code = code
+          refresh_float_title(term)
         end)
       end,
     })
@@ -260,7 +259,17 @@ function M.open(id, direction)
   id = term_id(id)
   direction = direction or 'float'
 
-  local term = ensure_terminal(id)
+  local term = terminals[id]
+  if term and term.exited then
+    if valid_win(term.win) and term.direction == direction then
+      vim.api.nvim_set_current_win(term.win)
+      return term
+    end
+
+    M.kill(id)
+  end
+
+  term = ensure_terminal(id)
   remember_origin(term)
 
   if valid_win(term.win) then
@@ -372,7 +381,7 @@ function M.select()
   vim.ui.select(items, {
     prompt = 'Select terminal:',
     format_item = function(term)
-      local state = valid_win(term.win) and 'open' or 'hidden'
+      local state = term.exited and 'exited' or (valid_win(term.win) and 'open' or 'hidden')
       return string.format('%d: %s [%s] (%s)', term.id, terminal_title(term), term.direction, state)
     end,
   }, function(term)
