@@ -188,5 +188,8 @@ export POWERLINE_NERD_FONTS=1
 # fzf image finder (ALT-I)
 [[ -f ~/.config/zsh/fzf-image.zsh ]] && source ~/.config/zsh/fzf-image.zsh
 
+# apikeys
+[[ -f ~/.config/zsh/api-keys.zsh ]] && source ~/.config/zsh/api-keys.zsh
+
 # zoxide
 eval "$(zoxide init zsh)"

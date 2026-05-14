@@ -13,11 +13,8 @@
   "pi-screenshots": {
     "sources": []
   },
-  "powerline": "lucy-cost",
+  "powerline": "lucy",
   "powerlineVimMode": true,
   "showLastPrompt": false,
-  "quietStartup": true,
-  "packages": [
-    "npm:context-mode"
-  ]
+  "quietStartup": true
 }

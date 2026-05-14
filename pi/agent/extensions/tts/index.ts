@@ -125,7 +125,7 @@ type TtsActivity = {
   segmentCount?: number;
 };
 
-const subcommands = ["replay", "stop", "voice", "speed", "status", "files"] as const;
+const subcommands = ["generate", "replay", "stop", "voice", "speed", "status", "files"] as const;
 const statusCompletions = ["full"] as const;
 const speedCompletions = ["0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
 let activeVoice: Voice = VOICES[0];
@@ -968,6 +968,55 @@ function filesText(ctx: ExtensionContext) {
     .join("\n\n");
 }
 
+function enqueueTtsFromAssistantMessage(message: AssistantMessage, ctx: ExtensionContext, pi: ExtensionAPI): boolean {
+  if (message.stopReason !== "stop") return false;
+
+  const input = getTtsMessageText(message);
+  if (!input) return false;
+
+  const segments = splitIntoWordSegments(input);
+  if (segments.length === 0) return false;
+
+  enqueueRun({
+    source: "response",
+    segments,
+    voice: activeVoice,
+  }, ctx, pi);
+
+  return true;
+}
+
+function findLatestTtsAssistantMessage(ctx: ExtensionContext): { index: number; message: AssistantMessage } | undefined {
+  const branch = ctx.sessionManager.getBranch();
+
+  for (let index = branch.length - 1; index >= 0; index--) {
+    const entry = branch[index];
+    if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+    if (!getTtsMessageText(entry.message)) continue;
+    return { index, message: entry.message };
+  }
+
+  return undefined;
+}
+
+async function hasReadablePersistedTtsForAssistant(ctx: ExtensionContext, index: number): Promise<boolean> {
+  const branch = ctx.sessionManager.getBranch();
+
+  for (const entry of branch.slice(index + 1)) {
+    if (entry.type === "message" && entry.message.role === "assistant") return false;
+    if (entry.type !== "custom" || entry.customType !== CUSTOM_ENTRY_TYPE || !isPersistedTtsReplay(entry.data)) continue;
+
+    try {
+      await readFile(entry.data.audioPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 function registerTtsCommand(pi: ExtensionAPI) {
   pi.registerCommand("tts", {
     description: "Control Mistral TTS playback",
@@ -1002,6 +1051,25 @@ function registerTtsCommand(pi: ExtensionAPI) {
     },
     handler: async (args: string, ctx: ExtensionCommandContext) => {
       const [command = "status", ...rest] = args.trim().split(/\s+/);
+
+      if (command === "generate") {
+        await ctx.waitForIdle();
+
+        const latest = findLatestTtsAssistantMessage(ctx);
+        if (!latest) {
+          ctx.ui.notify("No assistant message with <tts-message> content found", "info");
+          return;
+        }
+
+        if (await hasReadablePersistedTtsForAssistant(ctx, latest.index)) {
+          ctx.ui.notify("TTS already exists for the latest tagged assistant message. Use /tts replay.", "info");
+          return;
+        }
+
+        enqueueTtsFromAssistantMessage(latest.message, ctx, pi);
+        ctx.ui.notify("TTS generation queued", "info");
+        return;
+      }
 
       if (command === "replay") {
         if (!lastReplayAudio) {
@@ -1075,7 +1143,7 @@ function registerTtsCommand(pi: ExtensionAPI) {
         return;
       }
 
-      ctx.ui.notify("Usage: /tts replay | stop | voice <name> | speed <0.75-2> | status [full] | files", "warning");
+      ctx.ui.notify("Usage: /tts generate | replay | stop | voice <name> | speed <0.75-2> | status [full] | files", "warning");
     },
   });
 }
@@ -1088,19 +1156,9 @@ export default function (pi: ExtensionAPI) {
       .reverse()
       .find((m): m is AssistantMessage => m.role === "assistant");
 
-    if (!message || message.stopReason !== "stop") return;
+    if (!message) return;
 
-    const input = getTtsMessageText(message);
-    if (!input) return;
-
-    const segments = splitIntoWordSegments(input);
-    if (segments.length === 0) return;
-
-    enqueueRun({
-      source: "response",
-      segments,
-      voice: activeVoice,
-    }, ctx, pi);
+    enqueueTtsFromAssistantMessage(message, ctx, pi);
   });
 
   pi.on("session_start", async (_event, ctx) => {

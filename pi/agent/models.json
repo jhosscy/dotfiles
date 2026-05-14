@@ -3,7 +3,7 @@
     "novita": {
       "baseUrl": "https://api.novita.ai/openai/v1",
       "api": "openai-completions",
-      "apiKey": "NOVITA_API_KEY",
+      "apiKey": "NOVITA_CUSTOM_API_KEY",
       "models": [
         {
           "id": "moonshotai/kimi-k2.6",
@@ -17,27 +17,150 @@
             "cacheRead": 0.16,
             "cacheWrite": 0
           }
+        },
+        {
+          "id": "deepseek/deepseek-v4-flash",
+          "name": "Deepseek V4 Flash",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 1048576,
+          "maxTokens": 393216,
+          "compat": {
+            "supportsDeveloperRole": false,
+            "supportsStore": false,
+            "maxTokensField": "max_tokens"
+          },
+          "cost": {
+            "input": 0.14,
+            "output": 0.28,
+            "cacheRead": 0.028,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsReasoningEffort": false,
+            "thinkingFormat": "qwen"
+          },
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high"
+          }
         }
       ]
     },
-    "modal": {
-      "baseUrl": "https://jhosscy--qwen36-llamacpp-llamacppserver.us-east.modal.direct/v1",
+    "baseten": {
+      "baseUrl": "https://inference.baseten.co/v1",
       "api": "openai-completions",
-      "apiKey": "dummy",
+      "apiKey": "BASETEN_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsStore": false,
+        "maxTokensField": "max_tokens"
+      },
       "models": [
         {
-          "id": "unsloth/Qwen3.6-27B-Uncensored",
-          "name": "Qwen3.6 27B",
+          "id": "moonshotai/Kimi-K2.6",
+          "name": "Kimi K2.6",
           "input": ["text", "image"],
           "contextWindow": 262144,
-          "maxTokens": 262144
+          "maxTokens": 262144,
+          "cost": {
+            "input": 0.95,
+            "output": 4,
+            "cacheRead": 0.16,
+            "cacheWrite": 0
+          }
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-V4-Pro",
+          "name": "Deepseek V4 Pro",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 131072,
+          "maxTokens": 131072,
+          "cost": {
+            "input": 1.74,
+            "output": 3.48,
+            "cacheRead": 0.15,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsReasoningEffort": true,
+            "thinkingFormat": "deepseek"
+          },
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          }
         }
       ]
     },
-    "deepseek": {
+    "nebiusUK": {
+      "baseUrl": "https://api.tokenfactory.uk-south1.nebius.com/v1",
+      "api": "openai-completions",
+      "apiKey": "NEBIUS_API_KEY",
+      "models": [
+        {
+          "id": "deepseek-ai/DeepSeek-V4-Pro",
+          "name": "Deepseek V4 Pro",
+          "input": ["text"],
+          "contextWindow": 1048576,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 1.75,
+            "output": 3.50,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    },
+    "nebius": {
+      "baseUrl": "https://api.tokenfactory.nebius.com/v1/",
+      "api": "openai-completions",
+      "apiKey": "NEBIUS_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsStore": false,
+        "supportsStrictMode": false,
+        "maxTokensField": "max_completion_tokens"
+      },
+      "models": [
+        {
+          "id": "zai-org/GLM-5.1",
+          "name": "GLM 5.1",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 200000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 1.40,
+            "output": 4.40,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsReasoningEffort": false,
+            "thinkingFormat": "qwen-chat-template"
+          },
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": null
+          }
+        }
+      ]
+    },
+    "deepseekPlatform": {
       "baseUrl": "https://api.deepseek.com",
       "api": "openai-completions",
-      "apiKey": "DEEPSEEK_API_KEY",
+      "apiKey": "DEEPSEEK_CUSTOM_API_KEY",
       "models": [
         {
           "id": "deepseek-v4-pro",
@@ -73,6 +196,39 @@
             "cacheRead": 0.0028,
             "cacheWrite": 0
           }
+        }
+      ]
+    },
+    "primeIntellect": {
+      "baseUrl": "https://api.pinference.ai/api/v1",
+      "api": "openai-completions",
+      "apiKey": "PRIME_INTELLECT_API_KEY",
+      "models": [
+        {
+          "id": "anthropic/claude-sonnet-4.6",
+          "name": "claude-sonnet-4.6",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": {
+            "input": 3.0,
+            "output": 15.0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          }
+        }
+      ]
+    },
+    "modalCloud": {
+      "baseUrl": "https://jhosscy--qwen36-llamacpp-llamacppserver.us-east.modal.direct/v1",
+      "api": "openai-completions",
+      "apiKey": "dummy",
+      "models": [
+        {
+          "id": "unsloth/Qwen3.6-27B-Uncensored",
+          "name": "Qwen3.6 27B",
+          "input": ["text", "image"],
+          "contextWindow": 262144,
+          "maxTokens": 262144
         }
       ]
     }

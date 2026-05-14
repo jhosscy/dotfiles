@@ -1,8 +1,5 @@
 {
   "mcpServers": {
-    "context-mode": {
-      "command": "context-mode"
-    },
     "replicate": {
       "command": "bunx",
       "args": ["-y", "replicate-mcp@latest"],
