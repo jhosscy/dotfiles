@@ -125,7 +125,7 @@ type TtsActivity = {
   segmentCount?: number;
 };
 
-const subcommands = ["generate", "replay", "stop", "voice", "speed", "status", "files"] as const;
+const subcommands = ["generate", "replay", "stop", "auto", "voice", "speed", "status", "files"] as const;
 const statusCompletions = ["full"] as const;
 const speedCompletions = ["0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
 let activeVoice: Voice = VOICES[0];
@@ -141,6 +141,7 @@ let currentVoiceName: string | undefined;
 let sessionCostUsd = 0;
 let lastGeneratedCostUsd = 0;
 let playbackSpeed = DEFAULT_PLAYBACK_SPEED;
+let autoTtsEnabled = false;
 let activity: TtsActivity | undefined;
 
 function getTtsMessageText(message: AssistantMessage): string | undefined {
@@ -902,6 +903,7 @@ function statusText(full = false) {
       `state: ${state}`,
       `voice: ${activeVoice.name}`,
       `speed: ${formatSpeed(playbackSpeed)}`,
+      `auto: ${autoTtsEnabled ? "on" : "off"}`,
       `replay: ${replayStatus}`,
       `cost: ${formatCost(sessionCostUsd)}`,
     ];
@@ -923,6 +925,7 @@ function statusText(full = false) {
     `state: ${state}`,
     `voice: ${activeVoice.name}`,
     `speed: ${formatSpeed(playbackSpeed)}`,
+    `auto: ${autoTtsEnabled ? "on" : "off"}`,
     `model: ${TTS_MODEL}`,
     `queue: ${runQueue.length}`,
     `replay: ${replayStatus}`,
@@ -1093,6 +1096,12 @@ function registerTtsCommand(pi: ExtensionAPI) {
         return;
       }
 
+      if (command === "auto") {
+        autoTtsEnabled = !autoTtsEnabled;
+        ctx.ui.notify(`TTS auto: ${autoTtsEnabled ? "on" : "off"}`, "info");
+        return;
+      }
+
       if (command === "voice") {
         const name = rest.join(" ").trim();
         const voice = findVoice(name);
@@ -1143,7 +1152,7 @@ function registerTtsCommand(pi: ExtensionAPI) {
         return;
       }
 
-      ctx.ui.notify("Usage: /tts generate | replay | stop | voice <name> | speed <0.75-2> | status [full] | files", "warning");
+      ctx.ui.notify("Usage: /tts generate | replay | stop | auto | voice <name> | speed <0.75-2> | status [full] | files", "warning");
     },
   });
 }
@@ -1152,6 +1161,8 @@ export default function (pi: ExtensionAPI) {
   registerTtsCommand(pi);
 
   pi.on("agent_end", async (event, ctx) => {
+    if (!autoTtsEnabled) return;
+
     const message = [...event.messages]
       .reverse()
       .find((m): m is AssistantMessage => m.role === "assistant");

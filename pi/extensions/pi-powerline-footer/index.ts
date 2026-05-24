@@ -953,11 +953,26 @@ export default function powerlineFooter(pi: ExtensionAPI) {
 
     const thinkingLevel = getThinkingLevelFromSession() ?? getThinkingLevelFn?.() ?? "off";
 
+    // Global cost across ALL branches (getEntries), not just active branch
+    let globalCost: number | undefined;
+    if (presetDef.segmentOptions?.cost?.mode === "global") {
+      const allEntries = ctx.sessionManager?.getEntries?.() ?? [];
+      globalCost = 0;
+      for (const entry of allEntries) {
+        if (entry.type !== "message") continue;
+        const m = entry.message;
+        if (m?.role !== "assistant") continue;
+        if (m.stopReason === "error" || m.stopReason === "aborted") continue;
+        globalCost += m.usage?.cost?.total ?? 0;
+      }
+    }
+
     return {
       model: ctx.model,
       thinkingLevel,
       sessionId: ctx.sessionManager?.getSessionId?.(),
       usageStats,
+      globalCost,
       modelCost,
       contextPercent,
       contextTokens,

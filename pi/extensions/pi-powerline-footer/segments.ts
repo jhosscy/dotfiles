@@ -301,7 +301,8 @@ function formatCost(n: number): string {
 const costSegment: StatusLineSegment = {
   id: "cost",
   render(ctx) {
-    const { cost } = ctx.usageStats;
+    const isGlobal = ctx.options.cost?.mode === "global";
+    const cost = isGlobal ? (ctx.globalCost ?? ctx.usageStats.cost) : ctx.usageStats.cost;
     const usingSubscription = ctx.usingSubscription;
 
     if (!cost && !usingSubscription) {

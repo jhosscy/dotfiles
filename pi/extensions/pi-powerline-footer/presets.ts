@@ -32,6 +32,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
       model: { showThinkingLevel: false },
       path: { mode: "basename" },
       git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
+      cost: { mode: "global" },
     },
   },
 
@@ -114,6 +115,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
       path: { mode: "abbreviated", maxLength: 50 },
       git: { showBranch: true, showAheadBehind: true, showStaged: true, showUnstaged: true, showUntracked: true },
       tokens: { format: "compact", showUnitPrices: false },
+      cost: { mode: "global" },
     },
   },
 
@@ -126,6 +128,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
     segmentOptions: {
       model: { showThinkingLevel: false },
       tokens: { format: "exact", showUnitPrices: true },
+      cost: { mode: "global" },
     },
   },
   "lucy-mini": {
@@ -138,6 +141,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
       model: { showThinkingLevel: false },
       git: { showBranch: true, showAheadBehind: false, showStaged: false, showUnstaged: false, showUntracked: false },
       tokens: { format: "compact", showUnitPrices: false },
+      cost: { mode: "global" },
     },
   },
 };

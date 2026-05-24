@@ -72,7 +72,7 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, globSync, readFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -87,7 +87,6 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
-import { globSync } from "glob";
 
 interface ScreenshotInfo {
 	path: string;
@@ -273,7 +272,7 @@ function getScreenshotsFromDirectory(directory: string, filterScreenshotNames = 
 function getScreenshotsFromGlob(pattern: string): ScreenshotInfo[] {
 	try {
 		const expandedPattern = expandPath(pattern);
-		const files = globSync(expandedPattern, { nodir: true });
+		const files = globSync(expandedPattern);
 
 		return files
 			.filter((path) => {
@@ -284,6 +283,7 @@ function getScreenshotsFromGlob(pattern: string): ScreenshotInfo[] {
 			.map((path) => {
 				try {
 					const stats = statSync(path);
+					if (!stats.isFile()) return null;
 					return {
 						path: resolve(path),
 						name: basename(path),

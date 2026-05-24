@@ -33,6 +33,15 @@ function isWordChar(ch: string | undefined): boolean {
   return Boolean(ch && /\w/.test(ch));
 }
 
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+}
+
+function isEditorBorderLine(line: string): boolean {
+  const plain = stripAnsi(line);
+  return plain.includes("─") && plain.trimStart().startsWith("─");
+}
+
 const ALT_PREFIX_TIMEOUT_MS = 120;
 
 function firstNonBlank(text: string): number {
@@ -372,9 +381,10 @@ export class VimEditor extends CustomEditor {
     if (lines.length === 0) return lines;
 
     const label = this.getVimModeLabel();
-    const last = lines.length - 1;
-    if (visibleWidth(lines[last] ?? "") >= label.length) {
-      lines[last] = truncateToWidth(lines[last] ?? "", width - label.length, "") + label;
+    const border = lines.findLastIndex(isEditorBorderLine);
+    const target = border === -1 ? lines.length - 1 : border;
+    if (visibleWidth(lines[target] ?? "") >= label.length) {
+      lines[target] = truncateToWidth(lines[target] ?? "", width - label.length, "") + label;
     }
     return lines;
   }

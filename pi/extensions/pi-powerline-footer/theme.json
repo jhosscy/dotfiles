@@ -1,5 +1,7 @@
 {
   "icons": {
-    "cache": "\uF49B"
+    "cache": "\uF49B",
+    "input": "\uf062",
+    "output": "\uf063"
   }
 }

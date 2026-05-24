@@ -199,6 +199,72 @@
         }
       ]
     },
+    "orcaRouter": {
+      "baseUrl": "https://api.orcarouter.ai/v1",
+      "api": "openai-completions",
+      "apiKey": "ORCAROUTER_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsStore": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "deepseek/deepseek-v4-flash",
+          "name": "Deepseek V4 Pro",
+          "reasoning": true,
+          "input": ["text"],
+          "contextWindow": 1048576,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 0.19,
+            "output": 0.37,
+            "cacheRead": 0.0037,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsReasoningEffort": true,
+            "thinkingFormat": "deepseek"
+          },
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high"
+          }
+        }
+      ]
+    },
+    "cohere": {
+      "baseUrl": "https://api.cohere.ai/compatibility/v1",
+      "api": "openai-completions",
+      "apiKey": "COHERE_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsStore": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "command-a-plus-05-2026",
+          "name": "Command a+",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 128000,
+          "maxTokens": 64000,
+          "compat": {
+            "supportsReasoningEffort": true,
+            "thinkingFormat": "deepseek"
+          },
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high"
+          }
+        }
+      ]
+    },
     "primeIntellect": {
       "baseUrl": "https://api.pinference.ai/api/v1",
       "api": "openai-completions",

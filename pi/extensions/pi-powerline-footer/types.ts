@@ -87,6 +87,7 @@ export interface StatusLineSegmentOptions {
   git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean; showAheadBehind?: boolean };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
   tokens?: { format?: "exact" | "compact"; showUnitPrices?: boolean };
+  cost?: { mode?: "branch" | "global" };
 }
 
 export type CustomItemPosition = "left" | "right" | "secondary";
@@ -171,6 +172,8 @@ export interface SegmentContext {
   
   // Computed
   usageStats: UsageStats;
+  /** Cost across ALL session entries (all branches). Used when options.cost.mode === "global". */
+  globalCost?: number;
   modelCost: ModelCost;
   contextPercent: number;
   contextTokens: number;
