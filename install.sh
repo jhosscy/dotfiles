@@ -251,11 +251,7 @@ install_pi_extensions() {
   fi
 
   local ext
-  for ext in \
-    "$DOTFILES_DIR/pi/extensions/pi-powerline-footer" \
-    "$DOTFILES_DIR/pi/extensions/pi-mcp-adapter" \
-    "$DOTFILES_DIR/pi/extensions/pi-vim-editor"
-  do
+  for ext in "$DOTFILES_DIR/pi/extensions"/*; do
     if [[ -d "$ext" ]]; then
       log "Instalando extensión Pi: $ext"
       pi install "$ext" || warn "Falló instalación de extensión: $ext"
