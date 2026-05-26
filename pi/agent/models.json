@@ -199,6 +199,31 @@
         }
       ]
     },
+    "alibaba": {
+      "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "api": "openai-completions",
+      "apiKey": "DASHSCOPE_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "thinkingFormat": "qwen"
+      },
+      "models": [{
+        "id": "qwen3.7-max",
+        "name": "Qwen 3.7 Max (Alibaba)",
+        "reasoning": true,
+        "input": ["text", "image"],
+        "contextWindow": 1000000,
+        "maxTokens": 64000,
+        "cost": {
+          "input": 2.50,
+          "output": 7.50,
+          "cacheRead": 0.25,
+          "cacheWrite": 3.125
+        },
+        "thinkingLevelMap": { "minimal": null, "low": null, "medium": null, "high": "high" }
+      }]                                                                                                                    
+    },
     "orcaRouter": {
       "baseUrl": "https://api.orcarouter.ai/v1",
       "api": "openai-completions",
