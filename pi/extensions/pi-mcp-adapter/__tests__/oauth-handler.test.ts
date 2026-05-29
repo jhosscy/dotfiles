@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 describe("oauth-handler path resolution", () => {
@@ -33,8 +33,9 @@ describe("oauth-handler path resolution", () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     delete process.env.MCP_OAUTH_DIR;
 
-    const tokensPath = join(agentDir, "mcp-oauth", "demo", "tokens.json");
-    mkdirSync(join(agentDir, "mcp-oauth", "demo"), { recursive: true });
+    const { getAuthEntryFilePath } = await import("../mcp-auth.ts");
+    const tokensPath = getAuthEntryFilePath("demo");
+    mkdirSync(dirname(tokensPath), { recursive: true });
     writeFileSync(tokensPath, JSON.stringify({ access_token: "abc", token_type: "bearer" }), "utf-8");
 
     const { getStoredTokens } = await import("../oauth-handler.ts");
@@ -54,16 +55,18 @@ describe("oauth-handler path resolution", () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     process.env.MCP_OAUTH_DIR = oauthDir;
 
-    mkdirSync(join(agentDir, "mcp-oauth", "demo"), { recursive: true });
-    writeFileSync(
-      join(agentDir, "mcp-oauth", "demo", "tokens.json"),
-      JSON.stringify({ access_token: "from-agent" }),
-      "utf-8",
-    );
+    const { getAuthEntryFilePath } = await import("../mcp-auth.ts");
 
-    mkdirSync(join(oauthDir, "demo"), { recursive: true });
+    delete process.env.MCP_OAUTH_DIR;
+    const agentTokensPath = getAuthEntryFilePath("demo");
+    mkdirSync(dirname(agentTokensPath), { recursive: true });
+    writeFileSync(agentTokensPath, JSON.stringify({ access_token: "from-agent" }), "utf-8");
+
+    process.env.MCP_OAUTH_DIR = oauthDir;
+    const overrideTokensPath = getAuthEntryFilePath("demo");
+    mkdirSync(dirname(overrideTokensPath), { recursive: true });
     writeFileSync(
-      join(oauthDir, "demo", "tokens.json"),
+      overrideTokensPath,
       JSON.stringify({ access_token: "from-override", token_type: "bearer" }),
       "utf-8",
     );

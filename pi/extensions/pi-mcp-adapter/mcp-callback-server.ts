@@ -7,11 +7,13 @@
 
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "http"
 import {
-  OAUTH_CALLBACK_PATH,
+  DEFAULT_OAUTH_CALLBACK_PATH,
   getConfiguredOAuthCallbackPort,
+  getOAuthCallbackPath,
   getOAuthCallbackPort,
+  setOAuthCallbackPath,
   setOAuthCallbackPort,
-} from "./mcp-oauth-provider.js"
+} from "./mcp-oauth-provider.ts"
 
 // HTML templates for callback responses
 const HTML_SUCCESS = `<!DOCTYPE html>
@@ -34,6 +36,15 @@ const HTML_SUCCESS = `<!DOCTYPE html>
 </body>
 </html>`
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
 const HTML_ERROR = (error: string) => `<!DOCTYPE html>
 <html>
 <head>
@@ -50,7 +61,7 @@ const HTML_ERROR = (error: string) => `<!DOCTYPE html>
   <div class="container">
     <h1>Authorization Failed</h1>
     <p>An error occurred during authorization.</p>
-    <div class="error">${error}</div>
+    <div class="error">${escapeHtml(error)}</div>
   </div>
 </body>
 </html>`
@@ -64,16 +75,24 @@ interface PendingAuth {
 
 /** Server singleton state */
 let server: Server | undefined
+let bindingPromise: Promise<void> | undefined
 const pendingAuths = new Map<string, PendingAuth>()
+const reservedAuthStates = new Set<string>()
 
 /** Timeout for callback completion (5 minutes) */
 const CALLBACK_TIMEOUT_MS = 5 * 60 * 1000
 
-const MAX_PORT_SCAN_ATTEMPTS = 25
-
 interface EnsureCallbackServerOptions {
   strictPort?: boolean
+  port?: number
+  callbackHost?: string
+  callbackPath?: string
+  oauthState?: string
+  reserveState?: boolean
 }
+
+const DEFAULT_OAUTH_CALLBACK_HOST = "localhost"
+let callbackServerHost = DEFAULT_OAUTH_CALLBACK_HOST
 
 /**
  * Handle incoming HTTP requests to the callback server.
@@ -82,7 +101,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url || "/", `http://${req.headers.host}`)
 
   // Only handle the callback path
-  if (url.pathname !== OAUTH_CALLBACK_PATH) {
+  if (url.pathname !== getOAuthCallbackPath()) {
     res.writeHead(404, { "Content-Type": "text/plain" })
     res.end("Not found")
     return
@@ -101,19 +120,37 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     return
   }
 
-  // Handle OAuth errors
+  const pending = pendingAuths.get(state)
+  const isReserved = reservedAuthStates.has(state)
+
+  // Handle OAuth errors only for a state that belongs to an active flow.
   if (error) {
+    if (!pending && !isReserved) {
+      const errorMsg = "Invalid or expired state parameter - potential CSRF attack"
+      res.writeHead(400, { "Content-Type": "text/html" })
+      res.end(HTML_ERROR(errorMsg))
+      return
+    }
+
     const errorMsg = errorDescription || error
     // Send HTTP response first before rejecting promise
     res.writeHead(200, { "Content-Type": "text/html" })
     res.end(HTML_ERROR(errorMsg))
+    reservedAuthStates.delete(state)
     // Reject promise after response is sent (defer to allow test to attach handler)
-    if (pendingAuths.has(state)) {
-      const pending = pendingAuths.get(state)!
+    if (pending) {
       clearTimeout(pending.timeout)
       pendingAuths.delete(state)
       setTimeout(() => pending.reject(new Error(errorMsg)), 0)
     }
+    return
+  }
+
+  // Validate state parameter
+  if (!pending) {
+    const errorMsg = "Invalid or expired state parameter - potential CSRF attack"
+    res.writeHead(400, { "Content-Type": "text/html" })
+    res.end(HTML_ERROR(errorMsg))
     return
   }
 
@@ -123,16 +160,6 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     res.end(HTML_ERROR("No authorization code provided"))
     return
   }
-
-  // Validate state parameter
-  if (!pendingAuths.has(state)) {
-    const errorMsg = "Invalid or expired state parameter - potential CSRF attack"
-    res.writeHead(400, { "Content-Type": "text/html" })
-    res.end(HTML_ERROR(errorMsg))
-    return
-  }
-
-  const pending = pendingAuths.get(state)!
 
   // Clear timeout and resolve the pending promise
   clearTimeout(pending.timeout)
@@ -146,72 +173,128 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 /**
  * Ensure the callback server is running.
  * If strictPort is true, requires binding on the configured callback port.
- * If strictPort is false, scans forward for an available local port.
+ * If strictPort is false, asks the OS for an available local port.
  */
 export async function ensureCallbackServer(options: EnsureCallbackServerOptions = {}): Promise<void> {
-  const configuredPort = getConfiguredOAuthCallbackPort()
+  while (bindingPromise) {
+    await bindingPromise
+  }
+
+  const operation = ensureCallbackServerLocked(options)
+  bindingPromise = operation
+  try {
+    await operation
+  } finally {
+    if (bindingPromise === operation) {
+      bindingPromise = undefined
+    }
+  }
+}
+
+async function ensureCallbackServerLocked(options: EnsureCallbackServerOptions = {}): Promise<void> {
+  const requiredPort = options.port ?? getConfiguredOAuthCallbackPort()
   const strictPort = options.strictPort === true
+  const requestedHost = options.callbackHost ?? DEFAULT_OAUTH_CALLBACK_HOST
+  const rawRequestedPath = options.callbackPath ?? DEFAULT_OAUTH_CALLBACK_PATH
+  const requestedPath = rawRequestedPath.startsWith("/") ? rawRequestedPath : `/${rawRequestedPath}`
+  if (options.reserveState && !options.oauthState) {
+    throw new Error("OAuth callback reservation requires an oauthState")
+  }
+  let reservedState: string | undefined
 
-  if (server) {
-    if (!strictPort || getOAuthCallbackPort() === configuredPort) return
+  const previousServer = server
+  const needsStrictRebind = Boolean(previousServer && strictPort && getOAuthCallbackPort() !== requiredPort)
+  const needsHostSwitch = Boolean(previousServer && callbackServerHost !== requestedHost)
+  const needsPathSwitch = Boolean(previousServer && getOAuthCallbackPath() !== requestedPath)
 
-    if (pendingAuths.size > 0) {
+  if (previousServer) {
+    if (!needsStrictRebind && !needsHostSwitch) {
+      if (needsPathSwitch) {
+        if (pendingAuths.size > 0 || reservedAuthStates.size > 0) {
+          throw new Error(
+            `OAuth callback server is using path ${getOAuthCallbackPath()}, but callback path ${requestedPath} is required and cannot be switched while authorizations are pending`
+          )
+        }
+        setOAuthCallbackPath(requestedPath)
+      }
+      if (options.reserveState && options.oauthState) {
+        reservedAuthStates.add(options.oauthState)
+        reservedState = options.oauthState
+      }
+      return
+    }
+
+    if (pendingAuths.size > 0 || reservedAuthStates.size > 0) {
       throw new Error(
-        `OAuth callback server is running on port ${getOAuthCallbackPort()}, but strict callback port ${configuredPort} is required and cannot be switched while authorizations are pending`
+        `OAuth callback server is running on ${callbackServerHost}:${getOAuthCallbackPort()}, but strict callback endpoint ${requestedHost}:${requiredPort} is required and cannot be switched while authorizations are pending`
+      )
+    }
+  }
+
+  const candidateServer = createServer(handleRequest)
+  const listenPort = strictPort ? requiredPort : 0
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      candidateServer.once("error", (err) => {
+        reject(err)
+      })
+
+      candidateServer.listen(listenPort, requestedHost, () => {
+        resolve()
+      })
+    })
+
+    if (strictPort) {
+      setOAuthCallbackPort(requiredPort)
+    } else {
+      const address = candidateServer.address()
+      if (!address || typeof address === "string" || typeof address.port !== "number") {
+        throw new Error("OAuth callback server did not report an assigned port")
+      }
+      setOAuthCallbackPort(address.port)
+    }
+
+    if (previousServer && (needsStrictRebind || needsHostSwitch)) {
+      await new Promise<void>((resolve) => {
+        previousServer.close(() => resolve())
+      })
+    }
+
+    callbackServerHost = requestedHost
+    setOAuthCallbackPath(requestedPath)
+    server = candidateServer
+    if (options.reserveState && options.oauthState) {
+      reservedAuthStates.add(options.oauthState)
+      reservedState = options.oauthState
+    }
+    server.unref()
+  } catch (error) {
+    if (reservedState) {
+      reservedAuthStates.delete(reservedState)
+    }
+    const nodeError = error as NodeJS.ErrnoException
+    await new Promise<void>((resolve) => {
+      candidateServer.close(() => resolve())
+    })
+
+    if (strictPort && nodeError.code === "EADDRINUSE") {
+      throw new Error(
+        `OAuth callback port ${requiredPort} is already in use. Pre-registered OAuth clients require an exact redirect URI; set MCP_OAUTH_CALLBACK_PORT to your registered port or free port ${requiredPort}`,
+        { cause: error }
       )
     }
 
-    await stopCallbackServer()
+    throw error
   }
+}
 
-  const preferredPort = configuredPort
-  const maxAttempts = strictPort ? 1 : MAX_PORT_SCAN_ATTEMPTS
-  let lastError: Error | undefined
+export function reserveCallbackServer(oauthState: string): void {
+  reservedAuthStates.add(oauthState)
+}
 
-  for (let offset = 0; offset < maxAttempts; offset++) {
-    const candidatePort = preferredPort + offset
-    const candidateServer = createServer(handleRequest)
-
-    try {
-      await new Promise<void>((resolve, reject) => {
-        candidateServer.once("error", (err) => {
-          reject(err)
-        })
-
-        candidateServer.listen(candidatePort, "localhost", () => {
-          resolve()
-        })
-      })
-
-      server = candidateServer
-      server.unref()
-      setOAuthCallbackPort(candidatePort)
-      return
-    } catch (error) {
-      const nodeError = error as NodeJS.ErrnoException
-      await new Promise<void>((resolve) => {
-        candidateServer.close(() => resolve())
-      })
-
-      if (nodeError.code !== "EADDRINUSE") {
-        throw error
-      }
-
-      lastError = error instanceof Error ? error : new Error(String(error))
-    }
-  }
-
-  if (strictPort) {
-    throw new Error(
-      `OAuth callback port ${preferredPort} is already in use. Pre-registered OAuth clients require an exact redirect URI; set MCP_OAUTH_CALLBACK_PORT to your registered port or free port ${preferredPort}`,
-      { cause: lastError }
-    )
-  }
-
-  throw new Error(
-    `OAuth callback port ${preferredPort} is already in use and no free port was found in range ${preferredPort}-${preferredPort + MAX_PORT_SCAN_ATTEMPTS - 1}`,
-    { cause: lastError }
-  )
+export function releaseCallbackServer(oauthState: string): void {
+  reservedAuthStates.delete(oauthState)
 }
 
 /**
@@ -219,6 +302,7 @@ export async function ensureCallbackServer(options: EnsureCallbackServerOptions 
  * Returns a promise that resolves with the authorization code.
  */
 export function waitForCallback(oauthState: string): Promise<string> {
+  reservedAuthStates.delete(oauthState)
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       if (pendingAuths.has(oauthState)) {
@@ -235,6 +319,7 @@ export function waitForCallback(oauthState: string): Promise<string> {
  * Cancel a pending authorization by state.
  */
 export function cancelPendingCallback(oauthState: string): void {
+  reservedAuthStates.delete(oauthState)
   const pending = pendingAuths.get(oauthState)
   if (pending) {
     clearTimeout(pending.timeout)
@@ -257,10 +342,13 @@ export async function stopCallbackServer(): Promise<void> {
   }
 
   setOAuthCallbackPort(getConfiguredOAuthCallbackPort())
+  callbackServerHost = DEFAULT_OAUTH_CALLBACK_HOST
+  setOAuthCallbackPath(DEFAULT_OAUTH_CALLBACK_PATH)
 
   // Reject all pending auths (defer to allow any pending operations to complete)
   const pendingList = Array.from(pendingAuths.entries())
   pendingAuths.clear()
+  reservedAuthStates.clear()
   setTimeout(() => {
     for (const [, pending] of pendingList) {
       clearTimeout(pending.timeout)

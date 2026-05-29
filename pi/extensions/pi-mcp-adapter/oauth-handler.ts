@@ -1,22 +1,19 @@
 // oauth-handler.ts - OAuth token management for MCP servers
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { getAgentPath } from "./agent-dir.js";
 import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
+import { getAuthEntryFilePath } from "./mcp-auth.ts";
 
 // Token storage path for a server
 function getTokensPath(serverName: string): string {
-  const override = process.env.MCP_OAUTH_DIR?.trim();
-  const authDir = override ? override : getAgentPath("mcp-oauth");
-  return join(authDir, serverName, "tokens.json");
+  return getAuthEntryFilePath(serverName);
 }
 
 /**
  * Get stored OAuth tokens for a server (if any).
  * Returns undefined if no tokens or tokens are expired.
  * 
- * Token file location: $MCP_OAUTH_DIR/<server>/tokens.json when set,
- * otherwise <Pi agent dir>/mcp-oauth/<server>/tokens.json
+ * Token file location: $MCP_OAUTH_DIR/sha256-<server-hash>/tokens.json when set,
+ * otherwise <Pi agent dir>/mcp-oauth/sha256-<server-hash>/tokens.json
  * 
  * Expected format:
  * {

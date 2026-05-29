@@ -33,11 +33,11 @@ describe("Pi agent dir paths", () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     delete process.env.MCP_OAUTH_DIR;
 
-    const { getAgentDir } = await import("../agent-dir.js");
+    const { getAgentDir } = await import("../agent-dir.ts");
     const { getPiGlobalConfigPath } = await import("../config.ts");
     const { getMetadataCachePath } = await import("../metadata-cache.ts");
     const { getOnboardingStatePath } = await import("../onboarding-state.ts");
-    const { saveAuthEntry } = await import("../mcp-auth.ts");
+    const { getAuthEntryFilePath, saveAuthEntry } = await import("../mcp-auth.ts");
 
     expect(getAgentDir()).toBe(agentDir);
     expect(getPiGlobalConfigPath()).toBe(join(agentDir, "mcp.json"));
@@ -45,7 +45,9 @@ describe("Pi agent dir paths", () => {
     expect(getOnboardingStatePath()).toBe(join(agentDir, "mcp-onboarding.json"));
 
     saveAuthEntry("demo", { tokens: { accessToken: "token" } }, "https://example.com/mcp");
-    expect(existsSync(join(agentDir, "mcp-oauth", "demo", "tokens.json"))).toBe(true);
+    expect(existsSync(getAuthEntryFilePath("demo"))).toBe(true);
+    expect(getAuthEntryFilePath("demo").startsWith(join(agentDir, "mcp-oauth"))).toBe(true);
+    expect(existsSync(join(agentDir, "mcp-oauth", "demo", "tokens.json"))).toBe(false);
     expect(existsSync(join(home, ".pi", "agent", "mcp-oauth", "demo", "tokens.json"))).toBe(false);
   });
 
@@ -54,7 +56,7 @@ describe("Pi agent dir paths", () => {
     process.env.HOME = home;
     process.env.PI_CODING_AGENT_DIR = "~/custom-pi-agent";
 
-    const { getAgentDir } = await import("../agent-dir.js");
+    const { getAgentDir } = await import("../agent-dir.ts");
 
     expect(getAgentDir()).toBe(join(home, "custom-pi-agent"));
   });
@@ -67,10 +69,12 @@ describe("Pi agent dir paths", () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     process.env.MCP_OAUTH_DIR = oauthDir;
 
-    const { saveAuthEntry } = await import("../mcp-auth.ts");
+    const { getAuthEntryFilePath, saveAuthEntry } = await import("../mcp-auth.ts");
 
     saveAuthEntry("demo", { tokens: { accessToken: "token" } }, "https://example.com/mcp");
-    expect(existsSync(join(oauthDir, "demo", "tokens.json"))).toBe(true);
+    expect(existsSync(getAuthEntryFilePath("demo"))).toBe(true);
+    expect(getAuthEntryFilePath("demo").startsWith(oauthDir)).toBe(true);
+    expect(existsSync(join(oauthDir, "demo", "tokens.json"))).toBe(false);
     expect(existsSync(join(agentDir, "mcp-oauth", "demo", "tokens.json"))).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "pi-mcp-adapter",
-  "version": "2.5.4",
+  "version": "2.8.0",
   "description": "MCP (Model Context Protocol) adapter extension for Pi coding agent",
   "type": "module",
   "license": "MIT",
@@ -55,6 +55,7 @@
     "server-manager.ts",
     "sampling-handler.ts",
     "tool-registrar.ts",
+    "tool-result-renderer.ts",
     "resource-tools.ts",
     "lifecycle.ts",
     "metadata-cache.ts",
@@ -73,16 +74,18 @@
     "logger.ts",
     "errors.ts",
     "app-bridge.bundle.js",
+    "banner.png",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.70.2",
-    "@mariozechner/pi-tui": "^0.73.1",
+    "@earendil-works/pi-ai": "^0.74.0",
+    "@earendil-works/pi-tui": "^0.74.0",
     "@modelcontextprotocol/ext-apps": "^1.2.2",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "open": "^10.2.0",
+    "recheck": "^4.5.0",
     "typebox": "^1.1.24",
     "zod": "^3.25.0 || ^4.0.0"
   },
@@ -90,6 +93,7 @@
     "zod": "^3.25.0 || ^4.0.0"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0",
     "@types/bun": "^1.0.0",
     "@types/node": "^20.0.0",
     "@types/open": "^6.2.1",

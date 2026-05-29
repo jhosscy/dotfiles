@@ -4,6 +4,7 @@
 
 import { describe, it, beforeEach, afterEach } from "node:test"
 import assert from "node:assert"
+import { createServer } from "node:http"
 import {
   ensureCallbackServer,
   waitForCallback,
@@ -11,8 +12,23 @@ import {
   stopCallbackServer,
   isCallbackServerRunning,
   getPendingAuthCount,
-} from "./mcp-callback-server.js"
-import { getOAuthCallbackPort } from "./mcp-oauth-provider.js"
+  releaseCallbackServer,
+} from "./mcp-callback-server.ts"
+import { getConfiguredOAuthCallbackPort, getOAuthCallbackPath, getOAuthCallbackPort } from "./mcp-oauth-provider.ts"
+
+async function getFreePort(): Promise<number> {
+  const probe = createServer()
+  await new Promise<void>((resolve, reject) => {
+    probe.once("error", reject)
+    probe.listen(0, "localhost", resolve)
+  })
+  const address = probe.address()
+  await new Promise<void>((resolve) => probe.close(() => resolve()))
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to reserve a free test port")
+  }
+  return address.port
+}
 
 describe("mcp-callback-server", () => {
   beforeEach(async () => {
@@ -36,6 +52,140 @@ describe("mcp-callback-server", () => {
       await ensureCallbackServer()
       await ensureCallbackServer()
       assert.strictEqual(isCallbackServerRunning(), true)
+    })
+
+    it("should reserve callback state atomically with the initial bind", async () => {
+      await ensureCallbackServer({ oauthState: "reserved-initial-state", reserveState: true })
+
+      await assert.rejects(
+        async () => await ensureCallbackServer({ callbackHost: "127.0.0.1" }),
+        /cannot be switched while authorizations are pending/
+      )
+
+      releaseCallbackServer("reserved-initial-state")
+    })
+
+    it("should not switch callback hosts while callback state is reserved", async () => {
+      await ensureCallbackServer({ oauthState: "reserved-host-state", reserveState: true })
+
+      await assert.rejects(
+        async () => await ensureCallbackServer({ callbackHost: "127.0.0.1" }),
+        /cannot be switched while authorizations are pending/
+      )
+
+      releaseCallbackServer("reserved-host-state")
+    })
+
+    it("should not switch callback paths while callback state is reserved", async () => {
+      await ensureCallbackServer({ callbackPath: "/first/callback", oauthState: "reserved-path-state", reserveState: true })
+
+      await assert.rejects(
+        async () => await ensureCallbackServer({ callbackPath: "/second/callback" }),
+        /cannot be switched while authorizations are pending/
+      )
+      assert.strictEqual(getOAuthCallbackPath(), "/first/callback")
+
+      releaseCallbackServer("reserved-path-state")
+    })
+
+    it("should release reserved callback state when strict binding fails", async () => {
+      const port = await getFreePort()
+      const blocker = createServer((_req, res) => {
+        res.writeHead(200)
+        res.end("blocked")
+      })
+
+      await new Promise<void>((resolve, reject) => {
+        blocker.once("error", reject)
+        blocker.listen(port, "localhost", resolve)
+      })
+
+      try {
+        await assert.rejects(
+          async () => await ensureCallbackServer({ strictPort: true, port, oauthState: "failed-bind-state", reserveState: true }),
+          /already in use/
+        )
+      } finally {
+        await new Promise<void>((resolve) => blocker.close(() => resolve()))
+      }
+
+      await ensureCallbackServer({ callbackPath: "/after-failure" })
+      await ensureCallbackServer({ callbackPath: "/after-failure-switch" })
+      assert.strictEqual(getOAuthCallbackPath(), "/after-failure-switch")
+    })
+
+    it("should bind an explicit strict host, port, and custom callback path", async () => {
+      const port = await getFreePort()
+
+      await ensureCallbackServer({ strictPort: true, port, callbackHost: "127.0.0.1", callbackPath: "/custom/callback" })
+
+      assert.strictEqual(getOAuthCallbackPort(), port)
+      assert.strictEqual(getOAuthCallbackPath(), "/custom/callback")
+      assert.strictEqual((await fetch(`http://127.0.0.1:${port}/callback?code=nope&state=custom-state`)).status, 404)
+
+      const callbackPromise = waitForCallback("custom-state")
+      const response = await fetch(`http://127.0.0.1:${port}/custom/callback?code=ok&state=custom-state`)
+      assert.strictEqual(response.status, 200)
+      assert.strictEqual(await callbackPromise, "ok")
+    })
+
+    it("should reject an occupied explicit strict port", async () => {
+      const port = await getFreePort()
+      const blocker = createServer((_req, res) => {
+        res.writeHead(200)
+        res.end("blocked")
+      })
+
+      await new Promise<void>((resolve, reject) => {
+        blocker.once("error", reject)
+        blocker.listen(port, "localhost", resolve)
+      })
+
+      try {
+        await assert.rejects(
+          async () => await ensureCallbackServer({ strictPort: true, port }),
+          /already in use/
+        )
+      } finally {
+        await new Promise<void>((resolve) => blocker.close(() => resolve()))
+      }
+    })
+
+    it("should use an OS-assigned port when the configured non-strict port is occupied", async () => {
+      const configuredPort = getConfiguredOAuthCallbackPort()
+      const blocker = createServer((_req, res) => {
+        res.writeHead(200)
+        res.end("blocked")
+      })
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          blocker.once("error", reject)
+          blocker.listen(configuredPort, "localhost", resolve)
+        })
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") return
+        throw error
+      }
+
+      try {
+        await ensureCallbackServer()
+        const callbackPort = getOAuthCallbackPort()
+        assert.notStrictEqual(callbackPort, configuredPort)
+
+        const state = "occupied-port-state"
+        const callbackPromise = waitForCallback(state)
+        const response = await fetch(`http://localhost:${callbackPort}/callback?code=ok&state=${state}`)
+        assert.strictEqual(response.status, 200)
+        assert.strictEqual(await callbackPromise, "ok")
+
+        await assert.rejects(
+          async () => await ensureCallbackServer({ strictPort: true }),
+          /already in use/
+        )
+      } finally {
+        await new Promise<void>((resolve) => blocker.close(() => resolve()))
+      }
     })
   })
 
@@ -87,6 +237,39 @@ describe("mcp-callback-server", () => {
       await assert.rejects(callbackPromise, /access_denied/)
     })
 
+    it("should escape provider-controlled OAuth error details", async () => {
+      await ensureCallbackServer()
+
+      const state = "test-state-error-escaping"
+      const callbackPromise = waitForCallback(state)
+      const callbackPort = getOAuthCallbackPort()
+      const description = `<script>alert("x")</script>&reason=bad`
+      const response = await fetch(
+        `http://localhost:${callbackPort}/callback?error=access_denied&error_description=${encodeURIComponent(description)}&state=${state}`
+      )
+
+      assert.strictEqual(response.status, 200)
+      const html = await response.text()
+      assert.ok(!html.includes("<script>"))
+      assert.ok(html.includes("&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;&amp;reason=bad"))
+      await assert.rejects(callbackPromise, /<script>alert\("x"\)<\/script>&reason=bad/)
+    })
+
+    it("should not reflect OAuth error details for invalid state", async () => {
+      await ensureCallbackServer()
+
+      const callbackPort = getOAuthCallbackPort()
+      const response = await fetch(
+        `http://localhost:${callbackPort}/callback?error=access_denied&error_description=${encodeURIComponent("<script>bad()</script>")}&state=invalid-state`
+      )
+
+      assert.strictEqual(response.status, 400)
+      const html = await response.text()
+      assert.ok(html.includes("Invalid or expired state parameter"))
+      assert.ok(!html.includes("<script>"))
+      assert.ok(!html.includes("bad()"))
+    })
+
     it("should return 400 for missing state", async () => {
       await ensureCallbackServer()
 
@@ -136,6 +319,22 @@ describe("mcp-callback-server", () => {
 
       cancelPendingCallback(state)
       await assert.rejects(pendingCallback, /Authorization cancelled/)
+    })
+
+    it("should not switch callback paths while callbacks are pending", async () => {
+      await ensureCallbackServer({ callbackPath: "/first/callback" })
+
+      const state = "pending-path-state"
+      const callbackPromise = waitForCallback(state)
+
+      await assert.rejects(
+        async () => await ensureCallbackServer({ callbackPath: "/second/callback" }),
+        /cannot be switched while authorizations are pending/
+      )
+      assert.strictEqual(getOAuthCallbackPath(), "/first/callback")
+
+      cancelPendingCallback(state)
+      await assert.rejects(callbackPromise, /Authorization cancelled/)
     })
 
     it("should return 404 for wrong path", async () => {

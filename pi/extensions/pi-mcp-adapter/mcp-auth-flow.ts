@@ -10,24 +10,28 @@ import {
 } from "@modelcontextprotocol/sdk/client/auth.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import open from "open"
-import { McpOAuthProvider, type McpOAuthConfig } from "./mcp-oauth-provider.js"
+import { McpOAuthProvider, type McpOAuthConfig } from "./mcp-oauth-provider.ts"
 import {
   ensureCallbackServer,
   waitForCallback,
   cancelPendingCallback,
   stopCallbackServer,
-} from "./mcp-callback-server.js"
+  releaseCallbackServer,
+} from "./mcp-callback-server.ts"
 import {
   getAuthForUrl,
   isTokenExpired,
   hasStoredTokens,
   clearAllCredentials,
+  clearClientInfo,
+  clearTokens,
+  clearCodeVerifier,
   updateOAuthState,
   getOAuthState,
   clearOAuthState,
   type StoredTokens,
-} from "./mcp-auth.js"
-import type { ServerEntry } from "./types.js"
+} from "./mcp-auth.ts"
+import type { ServerEntry } from "./types.ts"
 
 /** Auth status for a server */
 export type AuthStatus = "authenticated" | "expired" | "not_authenticated"
@@ -50,17 +54,82 @@ function generateState(): string {
 /**
  * Extract OAuth configuration from a ServerEntry.
  */
-function extractOAuthConfig(definition: ServerEntry): McpOAuthConfig {
-  // If oauth is explicitly false, return empty config
+export function extractOAuthConfig(definition: ServerEntry): McpOAuthConfig {
   if (definition.oauth === false) {
     return {}
   }
-  return {
-    grantType: definition.oauth?.grantType,
-    clientId: definition.oauth?.clientId,
-    clientSecret: definition.oauth?.clientSecret,
-    scope: definition.oauth?.scope,
+
+  const config: McpOAuthConfig = {}
+  if (definition.oauth?.grantType !== undefined) config.grantType = definition.oauth.grantType
+  if (definition.oauth?.clientId !== undefined) config.clientId = definition.oauth.clientId
+  if (definition.oauth?.clientSecret !== undefined) config.clientSecret = definition.oauth.clientSecret
+  if (definition.oauth?.scope !== undefined) config.scope = definition.oauth.scope
+  if (definition.oauth?.redirectUri !== undefined) {
+    if (typeof definition.oauth.redirectUri !== "string") {
+      throw new Error("OAuth redirectUri must be a string")
+    }
+    const redirectUri = definition.oauth.redirectUri.trim()
+    if (!redirectUri) {
+      throw new Error("OAuth redirectUri must not be empty")
+    }
+    config.redirectUri = redirectUri
   }
+  if (definition.oauth?.clientName !== undefined) {
+    if (typeof definition.oauth.clientName !== "string") {
+      throw new Error("OAuth clientName must be a string")
+    }
+    const clientName = definition.oauth.clientName.trim()
+    if (!clientName) {
+      throw new Error("OAuth clientName must not be empty")
+    }
+    config.clientName = clientName
+  }
+  if (definition.oauth?.clientUri !== undefined) {
+    if (typeof definition.oauth.clientUri !== "string") {
+      throw new Error("OAuth clientUri must be a string")
+    }
+    const clientUri = definition.oauth.clientUri.trim()
+    if (!clientUri) {
+      throw new Error("OAuth clientUri must not be empty")
+    }
+    config.clientUri = clientUri
+  }
+  return config
+}
+
+function parseOAuthRedirectUri(redirectUri: string): { port: number; callbackHost: string; callbackPath: string } {
+  let url: URL
+  try {
+    url = new URL(redirectUri)
+  } catch (error) {
+    throw new Error(`Invalid OAuth redirectUri: ${redirectUri}`, { cause: error })
+  }
+
+  const hostname = url.hostname.toLowerCase()
+  const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1"
+  if (url.protocol !== "http:" || !isLocalhost) {
+    throw new Error("OAuth redirectUri must be an http:// localhost or loopback URI")
+  }
+
+  if (url.username || url.password) {
+    throw new Error("OAuth redirectUri must not include username or password")
+  }
+
+  if (url.hash) {
+    throw new Error("OAuth redirectUri must not include a fragment")
+  }
+
+  if (!url.port) {
+    throw new Error("OAuth redirectUri must include an explicit numeric port")
+  }
+
+  const port = Number.parseInt(url.port, 10)
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error("OAuth redirectUri must include an explicit numeric port")
+  }
+
+  const callbackHost = hostname === "[::1]" ? "::1" : hostname
+  return { port, callbackHost, callbackPath: url.pathname }
 }
 
 /**
@@ -75,6 +144,13 @@ export async function startAuth(
   const config = definition ? extractOAuthConfig(definition) : {}
 
   if (config.grantType === "client_credentials") {
+    const storedAuth = await getAuthForUrl(serverName, serverUrl)
+    if (storedAuth?.clientInfo && !storedAuth.tokens && !config.clientId) {
+      clearClientInfo(serverName)
+      clearCodeVerifier(serverName)
+      await clearOAuthState(serverName)
+    }
+
     const authProvider = new McpOAuthProvider(serverName, serverUrl, config, {
       onRedirect: async () => {
         throw new Error("Browser redirect is not used for client_credentials flow")
@@ -87,12 +163,20 @@ export async function startAuth(
     return { authorizationUrl: "" }
   }
 
-  // Start the callback server.
-  // Pre-registered OAuth clients require an exact redirect URI, so enforce strict port binding.
-  await ensureCallbackServer({ strictPort: Boolean(config.clientId) })
-
+  const redirectCallback = config.redirectUri !== undefined ? parseOAuthRedirectUri(config.redirectUri) : undefined
   const oauthState = generateState()
-  await updateOAuthState(serverName, oauthState)
+
+  try {
+    await ensureCallbackServer({
+      strictPort: Boolean(config.clientId) || config.redirectUri !== undefined,
+      oauthState,
+      reserveState: true,
+      ...(redirectCallback ? { port: redirectCallback.port, callbackHost: redirectCallback.callbackHost, callbackPath: redirectCallback.callbackPath } : {}),
+    })
+  } catch (error) {
+    await clearOAuthState(serverName)
+    throw error
+  }
 
   let capturedUrl: URL | undefined
   const authProvider = new McpOAuthProvider(serverName, serverUrl, config, {
@@ -102,8 +186,28 @@ export async function startAuth(
   })
 
   try {
+    const storedAuth = await getAuthForUrl(serverName, serverUrl)
+    if (storedAuth?.clientInfo && !config.clientId) {
+      if (!storedAuth.tokens) {
+        clearClientInfo(serverName)
+        clearCodeVerifier(serverName)
+        await clearOAuthState(serverName)
+      } else {
+        const redirectUris = storedAuth.clientInfo.redirectUris
+        if (!Array.isArray(redirectUris) || !redirectUris.includes(authProvider.redirectUrl ?? "")) {
+          clearClientInfo(serverName)
+          clearTokens(serverName)
+          clearCodeVerifier(serverName)
+          await clearOAuthState(serverName)
+        }
+      }
+    }
+
+    await updateOAuthState(serverName, oauthState, serverUrl)
+
     const result = await runSdkAuth(authProvider, { serverUrl })
     if (result === "AUTHORIZED") {
+      releaseCallbackServer(oauthState)
       await clearOAuthState(serverName)
       return { authorizationUrl: "" }
     }
@@ -116,6 +220,7 @@ export async function startAuth(
     )
     return { authorizationUrl: capturedUrl.toString() }
   } catch (error) {
+    releaseCallbackServer(oauthState)
     await clearOAuthState(serverName)
     throw error
   }
@@ -133,11 +238,17 @@ export async function completeAuth(
     throw new Error(`No pending OAuth flow for server: ${serverName}`)
   }
 
+  const oauthState = await getOAuthState(serverName)
+
   try {
     // Complete the auth using the transport's finishAuth method
     await transport.finishAuth(authorizationCode)
     return "authenticated"
   } finally {
+    if (oauthState) {
+      releaseCallbackServer(oauthState)
+    }
+    await clearOAuthState(serverName)
     pendingTransports.delete(serverName)
     await transport.close().catch(() => {})
   }
@@ -338,11 +449,9 @@ export function supportsOAuth(definition: ServerEntry): boolean {
 
 /**
  * Initialize the OAuth system on startup.
- * Starts the callback server if there are any OAuth servers configured.
+ * OAuth callback binding is lazy and starts from startAuth() only.
  */
-export async function initializeOAuth(): Promise<void> {
-  await ensureCallbackServer()
-}
+export async function initializeOAuth(): Promise<void> {}
 
 /**
  * Shutdown the OAuth system.

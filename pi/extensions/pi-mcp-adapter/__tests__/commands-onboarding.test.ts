@@ -13,16 +13,17 @@ const mocks = {
   createMcpSetupPanel: vi.fn(),
 };
 
-vi.mock("../mcp-panel.js", () => ({
+vi.mock("../mcp-panel.ts", () => ({
   createMcpPanel: mocks.createMcpPanel,
 }));
 
-vi.mock("../mcp-setup-panel.js", () => ({
+vi.mock("../mcp-setup-panel.ts", () => ({
   createMcpSetupPanel: mocks.createMcpSetupPanel,
 }));
 
 describe("commands onboarding", () => {
   const originalHome = process.env.HOME;
+  const originalOAuthDir = process.env.MCP_OAUTH_DIR;
   const originalCwd = process.cwd();
 
   beforeEach(() => {
@@ -39,6 +40,11 @@ describe("commands onboarding", () => {
 
   afterEach(() => {
     process.env.HOME = originalHome;
+    if (originalOAuthDir === undefined) {
+      delete process.env.MCP_OAUTH_DIR;
+    } else {
+      process.env.MCP_OAUTH_DIR = originalOAuthDir;
+    }
     process.chdir(originalCwd);
   });
 
@@ -94,5 +100,58 @@ describe("commands onboarding", () => {
     const options = mocks.createMcpPanel.mock.calls[0]?.[6];
     expect(options.noticeLines[0]).toContain("Using standard MCP config");
     expect(loadOnboardingState().sharedConfigHintShown).toBe(true);
+  });
+
+  it("clears OAuth credentials, cancels pending auth, and closes the server on logout", async () => {
+    process.env.MCP_OAUTH_DIR = mkdtempSync(join(tmpdir(), "pi-mcp-commands-logout-"));
+    const ui = createUi();
+    const close = vi.fn();
+    const { getAuthEntry, updateOAuthState, updateTokens } = await import("../mcp-auth.ts");
+    const { waitForCallback } = await import("../mcp-callback-server.ts");
+    const { logoutServer } = await import("../commands.ts");
+
+    updateTokens("oauth-server", { accessToken: "token", refreshToken: "refresh" }, "https://example.com/mcp");
+    updateOAuthState("oauth-server", "pending-state", "https://example.com/mcp");
+    const pendingCallback = waitForCallback("pending-state");
+    const pendingCallbackRejection = expect(pendingCallback).rejects.toThrow("Authorization cancelled");
+
+    const result = await logoutServer("oauth-server", {
+      config: { mcpServers: { "oauth-server": { url: "https://example.com/mcp", auth: "oauth" } } },
+      manager: { close },
+      toolMetadata: new Map(),
+      failureTracker: new Map(),
+    } as any, { hasUI: true, ui } as any);
+
+    await pendingCallbackRejection;
+    expect(result.ok).toBe(true);
+    expect(getAuthEntry("oauth-server")).toBeUndefined();
+    expect(close).toHaveBeenCalledWith("oauth-server");
+    expect(ui.notify).toHaveBeenCalledWith(expect.stringContaining("OAuth credentials cleared"), "info");
+  });
+
+  it("marks explicit OAuth servers as needs-auth when only stale URL tokens exist", async () => {
+    process.env.MCP_OAUTH_DIR = mkdtempSync(join(tmpdir(), "pi-mcp-commands-oauth-"));
+    const ui = createUi();
+    const { updateTokens } = await import("../mcp-auth.ts");
+    const { openMcpPanel } = await import("../commands.ts");
+
+    updateTokens("legacy", { accessToken: "legacy-token" });
+    updateTokens("stale", { accessToken: "stale-token" }, "https://old.example.com/mcp");
+
+    await openMcpPanel({
+      config: {
+        mcpServers: {
+          legacy: { url: "https://new.example.com/mcp", auth: "oauth" },
+          stale: { url: "https://new.example.com/mcp", auth: "oauth" },
+        },
+      },
+      manager: { getConnection: () => null },
+      toolMetadata: new Map(),
+      failureTracker: new Map(),
+    } as any, { getFlag: () => undefined } as any, { hasUI: true, ui } as any);
+
+    const callbacks = mocks.createMcpPanel.mock.calls[0]?.[3];
+    expect(callbacks.getConnectionStatus("legacy")).toBe("needs-auth");
+    expect(callbacks.getConnectionStatus("stale")).toBe("needs-auth");
   });
 });

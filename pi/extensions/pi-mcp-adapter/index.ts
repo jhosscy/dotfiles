@@ -1,15 +1,15 @@
-import type { ExtensionAPI, ToolInfo } from "@mariozechner/pi-coding-agent";
-import type { McpExtensionState } from "./state.js";
+import type { ExtensionAPI, ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { McpExtensionState } from "./state.ts";
 import { Type } from "typebox";
-import { showStatus, showTools, reconnectServers, authenticateServer, openMcpPanel, openMcpSetup } from "./commands.js";
-import { loadMcpConfig } from "./config.js";
-import { buildProxyDescription, createDirectToolExecutor, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.js";
-import { flushMetadataCache, initializeMcp, updateStatusBar } from "./init.js";
-import { loadMetadataCache } from "./metadata-cache.js";
-import { executeCall, executeConnect, executeDescribe, executeList, executeSearch, executeStatus, executeUiMessages } from "./proxy-modes.js";
-import { getConfigPathFromArgv, truncateAtWord } from "./utils.js";
-import { initializeOAuth, shutdownOAuth } from "./mcp-auth-flow.js";
-import { renderMcpImageResult } from "./image-renderer.js";
+import { showStatus, showTools, reconnectServers, authenticateServer, logoutServer, openMcpAuthPanel, openMcpPanel, openMcpSetup } from "./commands.ts";
+import { loadMcpConfig } from "./config.ts";
+import { buildProxyDescription, createDirectToolExecutor, getMissingConfiguredDirectToolServers, resolveDirectTools } from "./direct-tools.ts";
+import { flushMetadataCache, initializeMcp, updateStatusBar } from "./init.ts";
+import { loadMetadataCache } from "./metadata-cache.ts";
+import { executeCall, executeConnect, executeDescribe, executeList, executeSearch, executeStatus, executeUiMessages } from "./proxy-modes.ts";
+import { getConfigPathFromArgv, truncateAtWord } from "./utils.ts";
+import { initializeOAuth, shutdownOAuth } from "./mcp-auth-flow.ts";
+import { createMcpDirectToolCallRenderer, renderMcpProxyToolCall, renderMcpToolResult } from "./tool-result-renderer.ts";
 
 export default function mcpAdapter(pi: ExtensionAPI) {
   let state: McpExtensionState | null = null;
@@ -67,13 +67,15 @@ export default function mcpAdapter(pi: ExtensionAPI) {
     || missingConfiguredDirectToolServers.length > 0;
 
   for (const spec of directSpecs) {
-    pi.registerTool({
+    (pi.registerTool as (tool: unknown) => unknown)({
       name: spec.prefixedName,
       label: `MCP: ${spec.originalName}`,
       description: spec.description || "(no description)",
       promptSnippet: truncateAtWord(spec.description, 100) || `MCP tool from ${spec.serverName}`,
-      parameters: Type.Unsafe<Record<string, unknown>>(spec.inputSchema || { type: "object", properties: {} }),
+      parameters: Type.Unsafe((spec.inputSchema || { type: "object", properties: {} }) as never),
       execute: createDirectToolExecutor(() => state, () => initPromise, spec),
+      renderCall: createMcpDirectToolCallRenderer(spec.prefixedName),
+      renderResult: renderMcpToolResult,
     });
   }
 
@@ -171,6 +173,7 @@ export default function mcpAdapter(pi: ExtensionAPI) {
       const parts = args?.trim()?.split(/\s+/) ?? [];
       const subcommand = parts[0] ?? "";
       const targetServer = parts[1];
+      const rest = parts.slice(1).join(" ");
 
       switch (subcommand) {
         case "reconnect":
@@ -185,6 +188,15 @@ export default function mcpAdapter(pi: ExtensionAPI) {
             await ctx.reload();
             return;
           }
+          break;
+        }
+        case "logout": {
+          const serverName = rest;
+          if (!serverName) {
+            if (ctx.hasUI) ctx.ui.notify("Usage: /mcp logout <server>", "error");
+            return;
+          }
+          await logoutServer(serverName, state, ctx);
           break;
         }
         case "status":
@@ -208,8 +220,7 @@ export default function mcpAdapter(pi: ExtensionAPI) {
     description: "Authenticate with an MCP server (OAuth)",
     handler: async (args, ctx) => {
       const serverName = args?.trim();
-      if (!serverName) {
-        if (ctx.hasUI) ctx.ui.notify("Usage: /mcp-auth <server-name>", "error");
+      if (!serverName && !ctx.hasUI) {
         return;
       }
 
@@ -227,16 +238,22 @@ export default function mcpAdapter(pi: ExtensionAPI) {
         return;
       }
 
+      if (!serverName) {
+        await openMcpAuthPanel(state, pi, ctx, earlyConfigPath);
+        return;
+      }
+
       await authenticateServer(serverName, state.config, ctx);
     },
   });
 
   if (shouldRegisterProxyTool) {
-    pi.registerTool({
+    (pi.registerTool as (tool: unknown) => unknown)({
       name: "mcp",
       label: "MCP",
       description: buildProxyDescription(earlyConfig, earlyCache, directSpecs),
       promptSnippet: "MCP gateway - connect to MCP servers and call their tools",
+      renderCall: renderMcpProxyToolCall,
       parameters: Type.Object({
         tool: Type.Optional(Type.String({ description: "Tool name to call (e.g., 'xcodebuild_list_sims')" })),
         args: Type.Optional(Type.String({ description: "Arguments as JSON string (e.g., '{\"key\": \"value\"}')" })),
@@ -248,9 +265,7 @@ export default function mcpAdapter(pi: ExtensionAPI) {
         server: Type.Optional(Type.String({ description: "Filter to specific server (also disambiguates tool calls)" })),
         action: Type.Optional(Type.String({ description: "Action: 'ui-messages' to retrieve prompts/intents from UI sessions" })),
       }),
-      renderResult(result, opts, theme) {
-        return renderMcpImageResult(result, opts, theme);
-      },
+      renderResult: renderMcpToolResult,
       async execute(_toolCallId, params: {
         tool?: string;
         args?: string;
@@ -296,30 +311,25 @@ export default function mcpAdapter(pi: ExtensionAPI) {
           };
         }
 
-        let mcpResult;
-
         if (params.action === "ui-messages") {
-          mcpResult = executeUiMessages(state);
-        } else if (params.tool) {
-          mcpResult = await executeCall(state, params.tool, parsedArgs, params.server, getPiTools);
-        } else if (params.connect) {
-          mcpResult = await executeConnect(state, params.connect);
-        } else if (params.describe) {
-          mcpResult = executeDescribe(state, params.describe);
-        } else if (params.search) {
-          mcpResult = executeSearch(state, params.search, params.regex, params.server, params.includeSchemas);
-        } else if (params.server) {
-          mcpResult = executeList(state, params.server);
-        } else {
-          mcpResult = executeStatus(state);
+          return executeUiMessages(state);
         }
-        return {
-          ...mcpResult,
-          details: {
-            ...(mcpResult.details && typeof mcpResult.details === "object" ? mcpResult.details : {}),
-            sessionId: _ctx.sessionManager.getSessionId(),
-          },
-        };
+        if (params.tool) {
+          return executeCall(state, params.tool, parsedArgs, params.server, getPiTools);
+        }
+        if (params.connect) {
+          return executeConnect(state, params.connect);
+        }
+        if (params.describe) {
+          return executeDescribe(state, params.describe);
+        }
+        if (params.search) {
+          return executeSearch(state, params.search, params.regex, params.server, params.includeSchemas);
+        }
+        if (params.server) {
+          return executeList(state, params.server);
+        }
+        return executeStatus(state);
       },
     });
   }

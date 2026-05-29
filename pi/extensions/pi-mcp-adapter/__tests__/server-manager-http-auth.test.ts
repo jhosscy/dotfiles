@@ -1,10 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+type OAuthProviderLike = {
+  redirectUrl?: string;
+  clientMetadata?: {
+    redirect_uris?: string[];
+    client_name?: string;
+    client_uri?: string;
+  };
+};
+
 type TransportOptions = {
   requestInit?: {
     headers?: Record<string, string>;
   };
-  authProvider?: unknown;
+  authProvider?: OAuthProviderLike;
 };
 
 type HttpTransportMock = {
@@ -46,7 +55,7 @@ vi.mock("@modelcontextprotocol/sdk/client/sse.js", () => ({
   SSEClientTransport: vi.fn(),
 }));
 
-vi.mock("../npx-resolver.js", () => ({
+vi.mock("../npx-resolver.ts", () => ({
   resolveNpxBinary: vi.fn(async () => null),
 }));
 
@@ -110,5 +119,26 @@ describe("McpServerManager HTTP bearer auth", () => {
     });
 
     expect(mocks.httpTransports.at(-1)!.options.requestInit?.headers?.Authorization).toBe("Bearer named-env-token");
+  });
+
+  it("preserves OAuth redirect URI and client metadata for HTTP transports", async () => {
+    const { McpServerManager } = await import("../server-manager.ts");
+
+    const manager = new McpServerManager();
+    await manager.connect("remote", {
+      url: "https://example.test/mcp",
+      auth: "oauth",
+      oauth: {
+        redirectUri: "http://127.0.0.1:3118/callback",
+        clientName: "Custom MCP",
+        clientUri: "https://example.com/custom-mcp",
+      },
+    });
+
+    const authProvider = mocks.httpTransports.at(-1)!.options.authProvider;
+    expect(authProvider?.redirectUrl).toBe("http://127.0.0.1:3118/callback");
+    expect(authProvider?.clientMetadata?.redirect_uris).toEqual(["http://127.0.0.1:3118/callback"]);
+    expect(authProvider?.clientMetadata?.client_name).toBe("Custom MCP");
+    expect(authProvider?.clientMetadata?.client_uri).toBe("https://example.com/custom-mcp");
   });
 });

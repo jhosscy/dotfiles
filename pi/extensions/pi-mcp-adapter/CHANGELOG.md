@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-05-25
+
+### Added
+- Added per-server OAuth `redirectUri`, `clientName`, and `clientUri` overrides for pre-registered callbacks and dynamic client metadata.
+
+### Fixed
+- Avoided OAuth callback port exhaustion by starting the callback server lazily and using OS-assigned ports for dynamic OAuth flows.
+- Re-register dynamic OAuth clients before browser auth when cached redirect URI metadata is missing or no longer matches the active callback URI.
+
+## [2.7.0] - 2026-05-22
+
+### Added
+- Added TUI call rendering for MCP proxy and direct tool inputs. Thanks @dmmulroy for PR #102.
+
+### Fixed
+- Hardened OAuth credential storage paths against server-name path traversal without rejecting valid configured server names.
+- Rejected unsafe regex-mode MCP search patterns before executing them.
+
+## [2.6.1] - 2026-05-13
+
+### Added
+- Added `/mcp logout <server>` to clear stored OAuth credentials and disconnect the server. Thanks @mattzcarey for PR #96.
+
+### Fixed
+- Cancel pending OAuth callbacks when logging out of an MCP server.
+
+## [2.6.0] - 2026-05-10
+
+### Added
+- Added a no-argument `/mcp-auth` OAuth picker and in-panel auth shortcut for OAuth-capable MCP servers.
+- Added compact collapsed rendering for MCP proxy and direct-tool result rows while keeping full tool results available when expanded.
+
+### Changed
+- Migrated Pi runtime dependencies and imports from deprecated `@mariozechner/*` packages to `@earendil-works/*` packages.
+
+### Fixed
+- Re-register dynamic OAuth clients during fresh auth when cached DCR client info exists without tokens, avoiding dead authorization URLs after server-side client invalidation.
+- Kept OAuth tokens, dynamic client info, PKCE verifiers, and OAuth state bound to the server URL so stale credentials cannot be reused after a server URL changes.
+- Kept the `/mcp-auth` OAuth picker search focused on OAuth server rows and prevented hidden panel shortcuts from unexpectedly launching auth.
+- Kept long MCP error results expanded in compact tool result rendering.
+
 ## [2.5.4] - 2026-05-04
 
 ### Changed

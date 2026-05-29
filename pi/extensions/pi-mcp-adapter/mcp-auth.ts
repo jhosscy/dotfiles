@@ -2,16 +2,16 @@
  * MCP Auth Storage Module
  * 
  * Handles secure storage of OAuth credentials, tokens, client information,
- * and PKCE state for MCP servers. Maintains backward compatibility with
- * per-server directory structure.
+ * and PKCE state for MCP servers.
  * 
- * Token storage location: $MCP_OAUTH_DIR/<server>/tokens.json when set,
- * otherwise <Pi agent dir>/mcp-oauth/<server>/tokens.json
+ * Token storage location: $MCP_OAUTH_DIR/sha256-<server-hash>/tokens.json when set,
+ * otherwise <Pi agent dir>/mcp-oauth/sha256-<server-hash>/tokens.json
  */
 
+import { createHash } from 'crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
-import { getAgentPath } from './agent-dir.js';
+import { getAgentPath } from './agent-dir.ts';
 
 /** OAuth token storage format */
 export interface StoredTokens {
@@ -27,6 +27,7 @@ export interface StoredClientInfo {
   clientSecret?: string;
   clientIdIssuedAt?: number;
   clientSecretExpiresAt?: number;
+  redirectUris?: string[];
 }
 
 /** Complete auth entry for a server */
@@ -48,13 +49,17 @@ function getAuthBaseDir(): string {
  * Get the server-specific directory path.
  */
 function getServerDir(serverName: string): string {
-  return join(getAuthBaseDir(), serverName);
+  if (typeof serverName !== 'string') {
+    throw new Error(`Invalid MCP server name: ${JSON.stringify(serverName)}`);
+  }
+  const storageKey = createHash('sha256').update(serverName, 'utf8').digest('hex');
+  return join(getAuthBaseDir(), `sha256-${storageKey}`);
 }
 
 /**
  * Get the tokens file path for a server.
  */
-function getTokensFilePath(serverName: string): string {
+export function getAuthEntryFilePath(serverName: string): string {
   return join(getServerDir(serverName), 'tokens.json');
 }
 
@@ -73,8 +78,8 @@ function ensureServerDir(serverName: string): void {
  * Returns undefined if file doesn't exist.
  */
 function readAuthEntry(serverName: string): AuthEntry | undefined {
+  const filePath = getAuthEntryFilePath(serverName);
   try {
-    const filePath = getTokensFilePath(serverName);
     if (!existsSync(filePath)) {
       return undefined;
     }
@@ -91,7 +96,7 @@ function readAuthEntry(serverName: string): AuthEntry | undefined {
  */
 function writeAuthEntry(serverName: string, entry: AuthEntry): void {
   ensureServerDir(serverName);
-  const filePath = getTokensFilePath(serverName);
+  const filePath = getAuthEntryFilePath(serverName);
   writeFileSync(filePath, JSON.stringify(entry, null, 2), { mode: 0o600 });
 }
 
@@ -136,7 +141,7 @@ export function saveAuthEntry(serverName: string, entry: AuthEntry, serverUrl?: 
  */
 export function removeAuthEntry(serverName: string): void {
   try {
-    const filePath = getTokensFilePath(serverName);
+    const filePath = getAuthEntryFilePath(serverName);
     if (existsSync(filePath)) {
       writeFileSync(filePath, '{}', { mode: 0o600 });
     }
@@ -163,6 +168,11 @@ export function updateTokens(
   serverUrl?: string
 ): void {
   const entry = getAuthEntry(serverName) ?? {};
+  if (serverUrl && entry.serverUrl !== serverUrl) {
+    delete entry.clientInfo;
+    delete entry.codeVerifier;
+    delete entry.oauthState;
+  }
   entry.tokens = tokens;
   saveAuthEntry(serverName, entry, serverUrl);
 }
@@ -176,6 +186,11 @@ export function updateClientInfo(
   serverUrl?: string
 ): void {
   const entry = getAuthEntry(serverName) ?? {};
+  if (serverUrl && entry.serverUrl !== serverUrl) {
+    delete entry.tokens;
+    delete entry.codeVerifier;
+    delete entry.oauthState;
+  }
   entry.clientInfo = clientInfo;
   saveAuthEntry(serverName, entry, serverUrl);
 }
@@ -183,10 +198,15 @@ export function updateClientInfo(
 /**
  * Update code verifier for a server.
  */
-export function updateCodeVerifier(serverName: string, codeVerifier: string): void {
+export function updateCodeVerifier(serverName: string, codeVerifier: string, serverUrl?: string): void {
   const entry = getAuthEntry(serverName) ?? {};
+  if (serverUrl && entry.serverUrl !== serverUrl) {
+    delete entry.tokens;
+    delete entry.clientInfo;
+    delete entry.oauthState;
+  }
   entry.codeVerifier = codeVerifier;
-  saveAuthEntry(serverName, entry);
+  saveAuthEntry(serverName, entry, serverUrl);
 }
 
 /**
@@ -203,10 +223,15 @@ export function clearCodeVerifier(serverName: string): void {
 /**
  * Update OAuth state for a server.
  */
-export function updateOAuthState(serverName: string, state: string): void {
+export function updateOAuthState(serverName: string, state: string, serverUrl?: string): void {
   const entry = getAuthEntry(serverName) ?? {};
+  if (serverUrl && entry.serverUrl !== serverUrl) {
+    delete entry.tokens;
+    delete entry.clientInfo;
+    delete entry.codeVerifier;
+  }
   entry.oauthState = state;
-  saveAuthEntry(serverName, entry);
+  saveAuthEntry(serverName, entry, serverUrl);
 }
 
 /**

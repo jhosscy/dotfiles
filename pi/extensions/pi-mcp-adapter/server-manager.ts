@@ -10,14 +10,14 @@ import type {
   ServerDefinition,
   ServerStreamResultPatchNotification,
   Transport,
-} from "./types.js";
-import { serverStreamResultPatchNotificationSchema } from "./types.js";
-import { resolveNpxBinary } from "./npx-resolver.js";
-import { logger } from "./logger.js";
-import { McpOAuthProvider } from "./mcp-oauth-provider.js";
-import { supportsOAuth } from "./mcp-auth-flow.js";
-import { registerSamplingHandler, type ServerSamplingConfig } from "./sampling-handler.js";
-import { interpolateEnvRecord, resolveBearerToken, resolveConfigPath } from "./utils.js";
+} from "./types.ts";
+import { serverStreamResultPatchNotificationSchema } from "./types.ts";
+import { resolveNpxBinary } from "./npx-resolver.ts";
+import { logger } from "./logger.ts";
+import { McpOAuthProvider } from "./mcp-oauth-provider.ts";
+import { extractOAuthConfig, supportsOAuth } from "./mcp-auth-flow.ts";
+import { registerSamplingHandler, type ServerSamplingConfig } from "./sampling-handler.ts";
+import { interpolateEnvRecord, resolveBearerToken, resolveConfigPath } from "./utils.ts";
 
 interface ServerConnection {
   client: Client;
@@ -182,13 +182,7 @@ export class McpServerManager {
     // For OAuth servers, create an auth provider
     let authProvider: McpOAuthProvider | undefined;
     if (supportsOAuth(definition)) {
-      // Extract OAuth config (handles both object and false cases)
-      const oauthConfig = definition.oauth === false ? {} : {
-        grantType: definition.oauth?.grantType,
-        clientId: definition.oauth?.clientId,
-        clientSecret: definition.oauth?.clientSecret,
-        scope: definition.oauth?.scope,
-      };
+      const oauthConfig = extractOAuthConfig(definition);
       authProvider = new McpOAuthProvider(
         serverName,
         definition.url!,
