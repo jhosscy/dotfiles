@@ -7,8 +7,21 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 export default function (pi: ExtensionAPI) {
   const allowedForSession = new Set<string>();
   const isSubagent = Number(process.env.PI_SUBAGENT_DEPTH ?? "0") > 0;
+  let gateEnabled = true;
+
+  pi.registerCommand("permissions", {
+    description: "Toggle permission gate on/off",
+    handler: async (_args, ctx) => {
+      gateEnabled = !gateEnabled;
+      ctx.ui.notify(
+        `Permissions ${gateEnabled ? "enabled" : "disabled"}`,
+        gateEnabled ? "info" : "warning",
+      );
+    },
+  });
 
 	pi.on("tool_call", async (event, ctx) => {
+    if (!gateEnabled) return;
     if (event.toolName === "bash") {
       const command = event.input.command as string;
       const dangerousPatterns = [
