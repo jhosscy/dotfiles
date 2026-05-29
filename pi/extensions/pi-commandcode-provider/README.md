@@ -6,17 +6,17 @@ A [pi](https://github.com/badlogic/pi-mono) custom provider that connects pi to 
 
 > **Note:** This package only provides a model _provider_. It does **not** include an API key. You must bring your own Command Code API key or subscription.
 
-> 💰 **Current offer:** Command Code offers [4× usage of DeepSeek V4](https://commandcode.ai/docs/resources/pricing-limits#deepseek-v4-pro-4x-usage) (Pro and Flash) at no extra cost.
+> 💰 **Current offers:** Command Code offers [4× usage of DeepSeek V4 Pro](https://commandcode.ai/docs/resources/pricing-limits#deepseek-v4-pro-4x-usage) and [2× usage of Qwen 3.7 Max](https://commandcode.ai/docs/resources/pricing-limits#qwen-3.7-max-2x-usage).
 
 ## Models
 
-18 models across premium and open-source providers:
+Models are fetched live from Command Code's Provider API at startup, so new models like Qwen 3.7 Max show up without a package release.
 
-| Category        | Models                                                                                                                                         |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Anthropic**   | Claude Opus 4.7, Claude Opus 4.6, Claude Sonnet 4.6, Claude Haiku 4.5                                                                          |
-| **OpenAI**      | GPT-5.5, GPT-5.4, GPT-5.3 Codex, GPT-5.4 Mini                                                                                                  |
-| **Open-source** | DeepSeek V4, DeepSeek V4 Pro, DeepSeek V4 Flash, Kimi K2.6, Kimi K2.5, GLM-5.1, GLM-5, MiniMax M2.7, MiniMax M2.5, Qwen 3.6 Max, Qwen 3.6 Plus |
+You can list the current Command Code models with:
+
+```sh
+pi -e index.ts --list-models
+```
 
 ## Install
 
@@ -31,6 +31,18 @@ pi install pi-commandcode-provider
 ```
 
 Then reload pi:
+
+```txt
+/reload
+```
+
+### Oh My Pi
+
+```sh
+omp plugin install pi-commandcode-provider
+```
+
+Then restart OMP or run:
 
 ```txt
 /reload
@@ -72,7 +84,18 @@ Create `~/.commandcode/auth.json`:
 }
 ```
 
-Or use pi's auth file at `~/.pi/agent/auth.json`:
+The official Command Code CLI auth shape is also supported:
+
+```json
+{
+  "command-code": {
+    "type": "api",
+    "key": "user_..."
+  }
+}
+```
+
+Or use a pi/OMP auth file at `~/.pi/agent/auth.json` or `~/.omp/agent/auth.json`:
 
 ```json
 {
@@ -91,21 +114,44 @@ After installing and setting your API key, select a Command Code model in pi:
 Any query will then use the Command Code API. You can list available models:
 
 ```sh
-pi -e index.ts --list-models
+pi -e index.ts --list-models   # or /models within pi
+omp -e index.ts --list-models
 ```
 
-Or within pi:
-
-```txt
-/models
-```
-
-## Publish
+In OMP, use the provider-qualified model name:
 
 ```sh
-npm login
-npm publish --access public
+omp -p "hello" --model commandcode/deepseek/deepseek-v4-flash
 ```
+
+OMP currently resolves `--provider commandcode --model ...` before extension providers are loaded, so prefer `--model commandcode/<model-id>`. <!-- TODO: remove this note once OMP fixes provider resolution order for extension-loaded providers -->
+
+## Model discovery
+
+On startup, the provider fetches:
+
+```txt
+https://api.commandcode.ai/provider/v1/models
+```
+
+For tests or local mocks, override it with `COMMANDCODE_MODELS_URL`.
+
+## Pricing
+
+Command Code does not yet expose model pricing through its Provider API. The provider ships a static cost table (`MODEL_COSTS` in `index.ts`) for known models so that pi can display per-model pricing.
+
+- Models present in `MODEL_COSTS` show their real per-million-token rates (including promotional deals like the DeepSeek V4 Pro 4× discount and Qwen 3.7 Max 2× discount).
+- Models **not** in the table fall back to zero cost. When the Provider API adds a `cost` field, the static table can be removed.
+
+To add or update a price, edit the `MODEL_COSTS` record in `index.ts` and update the corresponding test in `tests/test-pricing.ts`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, PR expectations, and commit message rules.
+
+## Release
+
+See [RELEASE.md](RELEASE.md) for the prerelease, npm smoke-test, stable publish, git tag, and GitHub follow-up checklist.
 
 ## License
 

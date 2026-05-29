@@ -9,167 +9,66 @@
  *   3. Place API key in `~/.commandcode/auth.json` or `~/.pi/agent/auth.json`
  *      as {"apiKey": "user_..."} or {"commandcode": "user_..."}
  *
- * Models: deepseek-v4-pro, deepseek-v4-flash, claude-sonnet-4-6, claude-opus-4-7, etc.
+ * Models are fetched from Command Code's Provider API at startup.
  */
 
-import { calculateCost, createAssistantMessageEventStream } from "@earendil-works/pi-ai"
+import { AssistantMessageEventStream, calculateCost } from "@earendil-works/pi-ai"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 
-import { createStreamCommandCode, DEFAULT_API_BASE } from "./src/core.ts"
+import { COMMAND_CODE_CLI_VERSION, createStreamCommandCode, DEFAULT_API_BASE } from "./src/core.ts"
+import { DEFAULT_MODELS_URL, fetchCommandCodeModels } from "./src/models.ts"
 import { getApiKey, login, refreshToken } from "./src/oauth.ts"
 
 const API_BASE = process.env.COMMANDCODE_API_BASE ?? DEFAULT_API_BASE
+const MODELS_URL = process.env.COMMANDCODE_MODELS_URL ?? DEFAULT_MODELS_URL
 
-// ---------------------------------------------------------------------------
-// Model definitions
-// ---------------------------------------------------------------------------
+type CommandCodeModelCost = {
+  input: number
+  output: number
+  cacheRead: number
+  cacheWrite: number
+}
 
-const MODELS = [
-  // Premium (Anthropic)
-  {
-    id: "claude-opus-4-7",
-    name: "Claude Opus 4.7 (CC)",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-  },
-  {
-    id: "claude-opus-4-6",
-    name: "Claude Opus 4.6 (CC)",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 32_000,
-  },
-  {
-    id: "claude-sonnet-4-6",
-    name: "Claude Sonnet 4.6 (CC)",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 16_384,
-  },
-  {
-    id: "claude-haiku-4-5-20251001",
-    name: "Claude Haiku 4.5 (CC)",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 8_192,
-  },
-  // Premium (OpenAI)
-  {
-    id: "gpt-5.5",
-    name: "GPT-5.5 (CC)",
-    reasoning: true,
-    contextWindow: 256_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "gpt-5.4",
-    name: "GPT-5.4 (CC)",
-    reasoning: true,
-    contextWindow: 256_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "gpt-5.3-codex",
-    name: "GPT-5.3 Codex (CC)",
-    reasoning: true,
-    contextWindow: 256_000,
-    maxTokens: 128_000,
-  },
-  {
-    id: "gpt-5.4-mini",
-    name: "GPT-5.4 Mini (CC)",
-    reasoning: false,
-    contextWindow: 256_000,
-    maxTokens: 128_000,
-  },
-  // Open-source
-  {
-    id: "deepseek/deepseek-v4-pro",
-    name: "DeepSeek V4 Pro (CC)",
-    reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 384_000,
-    // Promo 4× hasta May 31 2026 (normal: $1.74/$3.48)
-    cost: { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0 },
-  },
-  {
-    id: "deepseek/deepseek-v4-flash",
-    name: "DeepSeek V4 Flash (CC)",
-    reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 384_000,
-    cost: { input: 0.14, output: 0.28, cacheRead: 0.01, cacheWrite: 0 },
-  },
-  {
-    id: "moonshotai/Kimi-K2.6",
-    name: "Kimi K2.6 (CC)",
-    reasoning: true,
-    contextWindow: 262_144,
-    maxTokens: 131_072,
-  },
-  {
-    id: "moonshotai/Kimi-K2.5",
-    name: "Kimi K2.5 (CC)",
-    reasoning: true,
-    contextWindow: 262_144,
-    maxTokens: 131_072,
-  },
-  {
-    id: "zai-org/GLM-5.1",
-    name: "GLM-5.1 (CC)",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 131_072,
-  },
-  {
-    id: "zai-org/GLM-5",
-    name: "GLM-5 (CC)",
-    reasoning: true,
-    contextWindow: 200_000,
-    maxTokens: 131_072,
-  },
-  {
-    id: "MiniMaxAI/MiniMax-M2.7",
-    name: "MiniMax M2.7 (CC)",
-    reasoning: true,
-    contextWindow: 1_048_576,
-    maxTokens: 131_072,
-  },
-  {
-    id: "MiniMaxAI/MiniMax-M2.5",
-    name: "MiniMax M2.5 (CC)",
-    reasoning: true,
-    contextWindow: 1_048_576,
-    maxTokens: 131_072,
-  },
-  {
-    id: "Qwen/Qwen3.6-Max-Preview",
-    name: "Qwen 3.6 Max (CC)",
-    reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 131_072,
-  },
-  {
-    id: "Qwen/Qwen3.6-Plus",
-    name: "Qwen 3.6 Plus (CC)",
-    reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 131_072,
-  },
-  {
-    id: "Qwen/Qwen3.7-Max",
-    name: "Qwen 3.7 Max (CC)",
-    reasoning: true,
-    contextWindow: 1_000_000,
-    maxTokens: 131_072,
-    // Promo 2× (normal: $2.50/$7.50)
-    cost: { input: 1.25, output: 3.75, cacheRead: 0.25, cacheWrite: 1.56 },
-  },
-]
+const ZERO_MODEL_COST: CommandCodeModelCost = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+}
+
+// The Provider API supplies the current model list. Keep known display pricing
+// here until the Provider API exposes prices directly.
+const MODEL_COSTS: Record<string, CommandCodeModelCost> = {
+  "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-opus-4-6": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  "claude-haiku-4-5-20251001": { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+  "gpt-5.5": { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 0 },
+  "gpt-5.4": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 0 },
+  "gpt-5.3-codex": { input: 2, output: 8, cacheRead: 0.5, cacheWrite: 0 },
+  "gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075, cacheWrite: 0 },
+  "google/gemini-3.5-flash": { input: 1.5, output: 9, cacheRead: 0.15, cacheWrite: 0 },
+  "google/gemini-3.1-flash-lite": { input: 0.25, output: 1.5, cacheRead: 0.03, cacheWrite: 0 },
+  // 4× usage deal: 75% off (permanent, no expiry)
+  "deepseek/deepseek-v4-pro": { input: 0.435, output: 0.87, cacheRead: 0.003625, cacheWrite: 0 },
+  "deepseek/deepseek-v4-flash": { input: 0.14, output: 0.28, cacheRead: 0.028, cacheWrite: 0 },
+  "moonshotai/Kimi-K2.6": { input: 0.95, output: 4, cacheRead: 0.16, cacheWrite: 0 },
+  "moonshotai/Kimi-K2.5": { input: 0.6, output: 3, cacheRead: 0.1, cacheWrite: 0 },
+  "zai-org/GLM-5.1": { input: 1.4, output: 4.4, cacheRead: 0.26, cacheWrite: 0 },
+  "zai-org/GLM-5": { input: 1, output: 3.2, cacheRead: 0.2, cacheWrite: 0 },
+  "MiniMaxAI/MiniMax-M2.7": { input: 0.3, output: 1.2, cacheRead: 0.06, cacheWrite: 0 },
+  "MiniMaxAI/MiniMax-M2.5": { input: 0.27, output: 0.95, cacheRead: 0.03, cacheWrite: 0 },
+  "Qwen/Qwen3.6-Max-Preview": { input: 1.3, output: 7.8, cacheRead: 0.26, cacheWrite: 1.63 },
+  "Qwen/Qwen3.6-Plus": { input: 0.5, output: 3, cacheRead: 0.1, cacheWrite: 0 },
+  // 2× usage deal: 50% off through June 22, 2026
+  "Qwen/Qwen3.7-Max": { input: 1.25, output: 3.75, cacheRead: 0.25, cacheWrite: 1.56 },
+  "stepfun/Step-3.5-Flash": { input: 0.1, output: 0.3, cacheRead: 0.02, cacheWrite: 0 },
+  "xiaomi/mimo-v2.5-pro": { input: 0.435, output: 0.87, cacheRead: 0.0036, cacheWrite: 0 },
+  "xiaomi/mimo-v2.5": { input: 0.14, output: 0.28, cacheRead: 0.0028, cacheWrite: 0 },
+}
 
 const streamCommandCode = createStreamCommandCode({
-  createStream: createAssistantMessageEventStream,
+  createStream: () => new AssistantMessageEventStream(),
   calculateCost,
   apiBase: API_BASE,
 })
@@ -178,16 +77,18 @@ const streamCommandCode = createStreamCommandCode({
 // Extension entry point
 // ---------------------------------------------------------------------------
 
-export default function (pi: ExtensionAPI) {
+export default async function (pi: ExtensionAPI) {
+  const models = await fetchCommandCodeModels({ url: MODELS_URL })
+
   pi.registerProvider("commandcode", {
     name: "Command Code",
     baseUrl: API_BASE,
-    apiKey: "COMMANDCODE_API_KEY",
+    apiKey: "$COMMANDCODE_API_KEY",
     authHeader: true,
     api: "commandcode-custom",
     streamSimple: streamCommandCode,
     headers: {
-      "x-command-code-version": "0.24.1",
+      "x-command-code-version": COMMAND_CODE_CLI_VERSION,
       "x-cli-environment": "production",
     },
     oauth: {
@@ -196,38 +97,14 @@ export default function (pi: ExtensionAPI) {
       refreshToken,
       getApiKey,
     },
-    models: MODELS.map((model) => ({
+    models: models.map((model) => ({
       id: model.id,
       name: model.name,
       reasoning: model.reasoning,
-      input: ["text"],
-      // Hardcoded costs are a fallback for when the API doesn't report
-      // providerMetadata.gateway cost (primary source). DeepSeek and Qwen 3.7
-      // have prices from the official docs; all others default to 0.
-      cost: "cost" in model
-        ? (model as any).cost
-        : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      input: ["text"] as const,
+      cost: MODEL_COSTS[model.id] ?? ZERO_MODEL_COST,
       contextWindow: model.contextWindow,
       maxTokens: model.maxTokens,
     })),
-  })
-
-  // Handle generic context overflow errors
-  pi.on("message_end", (event, ctx) => {
-    const message = event.message
-    if (message.role !== "assistant") return
-    if (message.stopReason !== "error") return
-    if (message.provider !== "commandcode" && ctx.model?.provider !== "commandcode") return
-
-    const errorMessage = message.errorMessage ?? ""
-    if (errorMessage.includes("context_length_exceeded")) return
-    if (!/context_length_exceeded|maximum context length|too many tokens/i.test(errorMessage)) return
-
-    return {
-      message: {
-        ...message,
-        errorMessage: `context_length_exceeded: ${errorMessage}`,
-      },
-    }
   })
 }

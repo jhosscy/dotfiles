@@ -54,6 +54,27 @@ describe("streamCommandCode — auth", () => {
     assert.equal(server.requestCount(), 0)
   })
 
+  it("ignores the literal env-var name and falls back to env", async () => {
+    server.mockResponse({
+      type: "success",
+      events: [JSON.stringify({ type: "finish", finishReason: "stop" })],
+    })
+    const { streamCommandCode } = createTestDeps({
+      apiBase: server.baseUrl(),
+      env: { COMMANDCODE_API_KEY: "env-key" },
+    })
+
+    await collectEvents(
+      streamCommandCode(makeModel(), makeContext(), { apiKey: "COMMANDCODE_API_KEY" }),
+    )
+
+    assert.equal(
+      server.lastRequestHeaders().authorization,
+      "Bearer env-key",
+      "should resolve from env, not send the literal var name as the token",
+    )
+  })
+
   it("uses options.apiKey in the Authorization header", async () => {
     server.mockResponse({
       type: "success",
@@ -142,6 +163,7 @@ describe("streamCommandCode — successful streams", () => {
     server.mockResponse({
       type: "success",
       events: [
+        JSON.stringify({ type: "reasoning-start" }),
         JSON.stringify({ type: "reasoning-delta", text: "think" }),
         JSON.stringify({ type: "reasoning-end" }),
         JSON.stringify({ type: "text-delta", text: "Using tool" }),
@@ -201,6 +223,66 @@ describe("streamCommandCode — successful streams", () => {
     if (done?.type !== "done") throw new Error("expected done")
     assert.equal(done.message.content[0]?.type, "thinking")
   })
+
+  it("closes thinking block before text when reasoning-end is missing", async () => {
+    server.mockResponse({
+      type: "success",
+      events: [
+        JSON.stringify({ type: "reasoning-start" }),
+        JSON.stringify({ type: "reasoning-delta", text: "thinking" }),
+        JSON.stringify({ type: "text-delta", text: "answer" }),
+        JSON.stringify({ type: "finish", finishReason: "stop" }),
+      ],
+    })
+    const { streamCommandCode } = createTestDeps({ apiBase: server.baseUrl() })
+
+    const events = await collectEvents(
+      streamCommandCode(makeModel(), makeContext(), { apiKey: "mock-key" }),
+    )
+
+    assert.deepEqual(eventTypes(events), [
+      "start",
+      "thinking_start",
+      "thinking_delta",
+      "thinking_end",
+      "text_start",
+      "text_delta",
+      "text_end",
+      "done",
+    ])
+  })
+
+  it("closes thinking block before tool-call when reasoning-end is missing", async () => {
+    server.mockResponse({
+      type: "success",
+      events: [
+        JSON.stringify({ type: "reasoning-start" }),
+        JSON.stringify({ type: "reasoning-delta", text: "thinking" }),
+        JSON.stringify({
+          type: "tool-call",
+          toolCallId: "call_1",
+          toolName: "read_file",
+          input: JSON.stringify({ path: "/tmp/x" }),
+        }),
+        JSON.stringify({ type: "finish", finishReason: "tool-calls" }),
+      ],
+    })
+    const { streamCommandCode } = createTestDeps({ apiBase: server.baseUrl() })
+
+    const events = await collectEvents(
+      streamCommandCode(makeModel(), makeContext(), { apiKey: "mock-key" }),
+    )
+
+    assert.deepEqual(eventTypes(events), [
+      "start",
+      "thinking_start",
+      "thinking_delta",
+      "thinking_end",
+      "toolcall_start",
+      "toolcall_end",
+      "done",
+    ])
+  })
 })
 
 describe("streamCommandCode — request serialization", () => {
@@ -244,7 +326,13 @@ describe("streamCommandCode — request serialization", () => {
     assert.equal(objectAt(body, ["params", "model"]), "deepseek/deepseek-v4-flash")
     assert.equal(objectAt(body, ["params", "stream"]), true)
     assert.equal(objectAt(body, ["params", "max_tokens"]), 500)
+    assert.equal(objectAt(body, ["params", "temperature"]), 0.3)
     assert.equal(objectAt(body, ["params", "system"]), "You are a test assistant.")
+    assert.equal(objectAt(body, ["memory"]), null)
+    assert.equal(objectAt(body, ["taste"]), null)
+    assert.equal(objectAt(body, ["skills"]), null)
+    assert.equal(objectAt(body, ["permissionMode"]), undefined)
+    assert.equal(objectAt(body, ["threadId"]), "00000000-0000-4000-8000-000000000000")
     assert.equal(
       objectAt(body, ["params", "messages", "1", "content", "0", "text"]),
       "first response",
@@ -253,8 +341,11 @@ describe("streamCommandCode — request serialization", () => {
 
     const headers = server.lastRequestHeaders()
     assert.equal(headers.authorization, "Bearer mock-key")
-    assert.equal(headers["x-command-code-version"], "0.24.1")
-    assert.equal(headers["x-session-id"], "00000000-0000-4000-8000-000000000000")
+    assert.equal(headers["x-command-code-version"], "0.29.0")
+    assert.equal(headers["x-project-slug"], "repo")
+    assert.equal(headers["x-taste-learning"], "true")
+    assert.equal(headers["x-co-flag"], "false")
+    assert.equal(headers["x-session-id"], undefined)
   })
 
   it("caps maxTokens and passes custom headers", async () => {
@@ -272,8 +363,47 @@ describe("streamCommandCode — request serialization", () => {
       }),
     )
 
-    assert.equal(objectAt(server.lastRequestBody(), ["params", "max_tokens"]), 200_000)
+    assert.equal(objectAt(server.lastRequestBody(), ["params", "max_tokens"]), 64_000)
     assert.equal(server.lastRequestHeaders()["x-custom"], "value")
+  })
+
+  it("caps default maxTokens by the selected model", async () => {
+    server.mockResponse({
+      type: "success",
+      events: [JSON.stringify({ type: "finish", finishReason: "stop" })],
+    })
+    const { streamCommandCode } = createTestDeps({ apiBase: server.baseUrl() })
+
+    await collectEvents(
+      streamCommandCode(makeModel({ maxTokens: 8_192 }), makeContext(), {
+        apiKey: "mock-key",
+      }),
+    )
+
+    assert.equal(objectAt(server.lastRequestBody(), ["params", "max_tokens"]), 8_192)
+  })
+
+  it("serializes OMP system prompt arrays as a string", async () => {
+    server.mockResponse({
+      type: "success",
+      events: [JSON.stringify({ type: "finish", finishReason: "stop" })],
+    })
+    const { streamCommandCode } = createTestDeps({ apiBase: server.baseUrl() })
+
+    await collectEvents(
+      streamCommandCode(
+        makeModel(),
+        makeContext({
+          systemPrompt: ["You are a test assistant.", "Use concise answers."] as unknown as string,
+        }),
+        { apiKey: "mock-key" },
+      ),
+    )
+
+    assert.equal(
+      objectAt(server.lastRequestBody(), ["params", "system"]),
+      "You are a test assistant.\n\nUse concise answers.",
+    )
   })
 
   it("runs onPayload and onResponse hooks", async () => {

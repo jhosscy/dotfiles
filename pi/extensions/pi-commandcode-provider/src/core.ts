@@ -18,6 +18,7 @@ import {
   recordOrEmpty,
   stringValue,
   toolsToJson,
+  systemPromptToText,
 } from "./converters.ts"
 import type {
   AssistantMessageEventStreamLike,
@@ -38,6 +39,9 @@ export * from "./converters.ts"
 export * from "./types.ts"
 
 export const DEFAULT_API_BASE = "https://api.commandcode.ai"
+export const COMMAND_CODE_CLI_VERSION = "0.29.0"
+
+const DEFAULT_GENERATE_MAX_TOKENS = 64_000
 
 function defaultUsage(): Usage {
   return {
@@ -60,20 +64,6 @@ function commandCodeInputTokenDetails(
   return isRecord(usage.inputTokenDetails) ? usage.inputTokenDetails : undefined
 }
 
-function gatewayMetadata(event: Record<string, unknown>): Record<string, unknown> | undefined {
-  const meta = isRecord(event.providerMetadata) ? event.providerMetadata : undefined
-  return isRecord(meta?.gateway) ? meta!.gateway as Record<string, unknown> : undefined
-}
-
-function parseCost(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string") {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return undefined
-}
-
 function headersToRecord(headers: Headers): Record<string, string> {
   const out: Record<string, string> = {}
   headers.forEach((value, key) => {
@@ -89,6 +79,23 @@ function abortError(message = "The operation was aborted"): DOMException {
 function successStopReason(reason: TerminalReason): StopReason {
   if (reason === "length" || reason === "toolUse") return reason
   return "stop"
+}
+
+function generateMaxTokens(model: ModelLike, options?: StreamOptions): number {
+  return Math.min(
+    options?.maxTokens ?? model.maxTokens,
+    model.maxTokens,
+    DEFAULT_GENERATE_MAX_TOKENS,
+  )
+}
+
+export function projectSlugFromPath(pathName: string): string {
+  const slug = pathName
+    .toLowerCase()
+    .replace(/^[a-z]:/i, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return slug || "project"
 }
 
 export function createStreamCommandCode(deps: CoreDependencies) {
@@ -125,8 +132,13 @@ export function createStreamCommandCode(deps: CoreDependencies) {
     const stream = deps.createStream()
 
     async function run() {
+      // OMP may pass the env-var name "COMMANDCODE_API_KEY" as the apiKey
+      // value instead of resolving it. Filter out this specific string.
+      const hostKey =
+        options?.apiKey && options.apiKey !== "COMMANDCODE_API_KEY" ? options.apiKey : undefined
+
       const apiKey =
-        options?.apiKey ??
+        hostKey ??
         getApiKey({
           env: deps.env,
           authPaths: deps.authPaths,
@@ -143,7 +155,7 @@ export function createStreamCommandCode(deps: CoreDependencies) {
           usage: defaultUsage(),
           stopReason: "error",
           errorMessage:
-            "No Command Code API key. Run /login and select Command Code, set COMMANDCODE_API_KEY env var, or configure ~/.commandcode/auth.json or ~/.pi/agent/auth.json.",
+            "No Command Code API key. Run /login and select Command Code, set the COMMANDCODE_API_KEY env var, or configure ~/.commandcode/auth.json, ~/.pi/agent/auth.json or ~/.omp/agent/auth.json",
           timestamp: now(),
         }
         stream.push({ type: "error", reason: "error", error: msg })
@@ -166,7 +178,7 @@ export function createStreamCommandCode(deps: CoreDependencies) {
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
       let textBlock: TextContent | undefined
       let currentTextIdx = -1
-      let thinkingBlock: string[] = []
+      let thinkingIdx = -1
       let finished = false
 
       const abortUpstream = () => {
@@ -198,40 +210,26 @@ export function createStreamCommandCode(deps: CoreDependencies) {
         currentTextIdx = -1
       }
 
-      const flushThinkingBlock = () => {
-        if (thinkingBlock.length === 0) return
-        const thinkingText = thinkingBlock.join("")
-        thinkingBlock = []
-        output.content.push({ type: "thinking", thinking: thinkingText })
-        const idx = output.content.length - 1
-        stream.push({
-          type: "thinking_start",
-          contentIndex: idx,
-          partial: output,
-        })
-        stream.push({
-          type: "thinking_delta",
-          contentIndex: idx,
-          delta: thinkingText,
-          partial: output,
-        })
-        stream.push({
-          type: "thinking_end",
-          contentIndex: idx,
-          content: thinkingText,
-          partial: output,
-        })
+      const endThinking = () => {
+        if (thinkingIdx < 0) return
+        const tc = output.content[thinkingIdx]
+        if (tc && tc.type === "thinking") {
+          stream.push({
+            type: "thinking_end",
+            contentIndex: thinkingIdx,
+            content: (tc as { thinking: string }).thinking,
+            partial: output,
+          })
+        }
+        thinkingIdx = -1
       }
-
-      // API-provided cost from finish-step (primary). Falls back to
-      // calculateCost + hardcoded model pricing when the API omits cost data.
-      let apiCost: { input: number; output: number; total: number } | null = null
 
       const handleEvent = (event: unknown) => {
         if (!isRecord(event)) return
 
         switch (event.type) {
           case "text-delta": {
+            endThinking()
             if (!textBlock) {
               textBlock = { type: "text", text: "" }
               output.content.push(textBlock)
@@ -253,18 +251,49 @@ export function createStreamCommandCode(deps: CoreDependencies) {
             break
           }
 
+          case "reasoning-start": {
+            endTextBlock()
+            break
+          }
+
           case "reasoning-delta": {
-            thinkingBlock.push(stringValue(event.text) ?? "")
+            endTextBlock()
+            const delta = stringValue(event.text) ?? ""
+            if (thinkingIdx < 0) {
+              output.content.push({ type: "thinking", thinking: delta })
+              thinkingIdx = output.content.length - 1
+              stream.push({
+                type: "thinking_start",
+                contentIndex: thinkingIdx,
+                partial: output,
+              })
+            } else {
+              const tc = output.content[thinkingIdx]
+              if (tc && tc.type === "thinking") {
+                ;(tc as { thinking: string }).thinking += delta
+              }
+            }
+            stream.push({
+              type: "thinking_delta",
+              contentIndex: thinkingIdx,
+              delta,
+              partial: output,
+            })
             break
           }
 
           case "reasoning-end": {
-            flushThinkingBlock()
+            endThinking()
+            break
+          }
+
+          case "tool-result": {
             break
           }
 
           case "tool-call": {
             endTextBlock()
+            endThinking()
             const toolCall: ToolCallContent = {
               type: "toolCall",
               id: stringValue(event.toolCallId) ?? "",
@@ -287,23 +316,6 @@ export function createStreamCommandCode(deps: CoreDependencies) {
             break
           }
 
-          case "finish-step": {
-            // Extract real cost from the API (Vercel AI Gateway providerMetadata).
-            // This is the primary cost source — more accurate than hardcoded pricing
-            // because it accounts for active promotions (DeepSeek 4×, Qwen 2×, etc.)
-            // and any gateway surcharges.
-            const gateway = gatewayMetadata(event)
-            if (gateway) {
-              const inputCost = parseCost(gateway.inputInferenceCost)
-              const outputCost = parseCost(gateway.outputInferenceCost)
-              const totalCost = parseCost(gateway.cost)
-              if (inputCost != null && outputCost != null && totalCost != null) {
-                apiCost = { input: inputCost, output: outputCost, total: totalCost }
-              }
-            }
-            break
-          }
-
           case "finish": {
             const usage = commandCodeUsage(event)
             if (usage) {
@@ -317,21 +329,7 @@ export function createStreamCommandCode(deps: CoreDependencies) {
                 output.usage.output +
                 output.usage.cacheRead +
                 output.usage.cacheWrite
-
-              if (apiCost) {
-                // Primary: use the real cost reported by the API.
-                // cacheRead/cacheWrite costs are already baked into input cost by the gateway.
-                output.usage.cost = {
-                  input: apiCost.input,
-                  output: apiCost.output,
-                  cacheRead: 0,
-                  cacheWrite: 0,
-                  total: apiCost.total,
-                }
-              } else {
-                // Fallback: compute cost from hardcoded model pricing via calculateCost.
-                deps.calculateCost(model, output.usage)
-              }
+              deps.calculateCost(model, output.usage)
             }
             output.stopReason = mapFinishReason(event.finishReason)
             finished = true
@@ -352,9 +350,12 @@ export function createStreamCommandCode(deps: CoreDependencies) {
       try {
         stream.push({ type: "start", partial: output })
 
+        const workingDir = cwd()
+        const threadId = uuid()
+
         let body: unknown = {
           config: {
-            workingDir: cwd(),
+            workingDir,
             date: new Date(now()).toISOString().split("T")[0],
             environment: getEnvironmentInfo(),
             structure: [],
@@ -364,18 +365,19 @@ export function createStreamCommandCode(deps: CoreDependencies) {
             gitStatus: "",
             recentCommits: [],
           },
-          memory: "",
-          taste: "",
+          memory: null,
+          taste: null,
           skills: null,
-          permissionMode: "standard",
           params: {
             model: model.id,
             messages: messagesToCC(context.messages),
             tools: toolsToJson(context.tools),
-            system: context.systemPrompt ?? "",
-            max_tokens: Math.min(options?.maxTokens ?? model.maxTokens, 200_000),
+            system: systemPromptToText(context.systemPrompt),
+            max_tokens: generateMaxTokens(model, options),
+            temperature: 0.3,
             stream: true,
           },
+          threadId,
         }
 
         const nextBody = await raceAbort(
@@ -390,12 +392,11 @@ export function createStreamCommandCode(deps: CoreDependencies) {
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${apiKey}`,
-              "x-command-code-version": "0.24.1",
+              "x-command-code-version": COMMAND_CODE_CLI_VERSION,
               "x-cli-environment": "production",
-              "x-project-slug": "pi-cc",
-              "x-taste-learning": "false",
+              "x-project-slug": projectSlugFromPath(workingDir),
+              "x-taste-learning": "true",
               "x-co-flag": "false",
-              "x-session-id": uuid(),
               ...options?.headers,
             },
             body: JSON.stringify(body),
@@ -452,7 +453,7 @@ export function createStreamCommandCode(deps: CoreDependencies) {
         }
 
         endTextBlock()
-        flushThinkingBlock()
+        endThinking()
 
         stream.push({
           type: "done",
