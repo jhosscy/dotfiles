@@ -210,6 +210,22 @@ function completeToolCallIds(messages?: readonly MessageLike[]): Set<string> {
   return new Set([...callIds].filter((id) => resultIds.has(id)))
 }
 
+function convertContentPart(part: Record<string, unknown>): unknown {
+  if (isRecord(part) && (part.type === "image" || part.type === "file")) {
+    const rawData = stringValue(part.data) ?? ""
+    const base64Data = rawData.replace(/^data:[^;]+;base64,/, "")
+    return {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: stringValue(part.mimeType) ?? stringValue(part.mediaType) ?? "image/png",
+        data: base64Data,
+      },
+    }
+  }
+  return part
+}
+
 export function messagesToCC(messages?: readonly MessageLike[]): unknown[] {
   const out: unknown[] = []
   const pairedToolCallIds = completeToolCallIds(messages)
@@ -257,6 +273,17 @@ export function messagesToCC(messages?: readonly MessageLike[]): unknown[] {
           },
         ],
       })
+      // CC API rejects type:"image" inside role:"tool" — send as a separate user message
+      const imageParts: unknown[] = []
+      for (const part of recordArray(message.content)) {
+        if (part.type === "image" || part.type === "file") {
+          imageParts.push(convertContentPart(part))
+        }
+      }
+      if (imageParts.length > 0) {
+        imageParts.unshift({ type: "text", text: `[Tool: ${message.toolName ?? "unknown"}] returned image:` })
+        out.push({ role: "user", content: imageParts })
+      }
     }
   }
   return out
