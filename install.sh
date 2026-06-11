@@ -244,19 +244,30 @@ install_pi_extensions() {
     return 0
   fi
 
-  local powerline_ext="$DOTFILES_DIR/pi/extensions/pi-powerline-footer"
+  # 1) La sub-extensión pi-powerline-footer vive dentro del bundle y tiene
+  #    su propio package.json con dependencias (@marckrenn/pi-sub-core, etc.)
+  #    que se resuelven localmente con bun install ANTES de registrar el bundle.
+  local powerline_ext="$DOTFILES_DIR/pi/extensions/pi-extensions/pi-powerline-footer"
   if [[ -d "$powerline_ext" && -f "$powerline_ext/package.json" ]]; then
     log "Instalando dependencias Bun: $powerline_ext"
     (cd "$powerline_ext" && bun install) || warn "Falló bun install en: $powerline_ext"
+  else
+    warn "No se encontró pi-powerline-footer en: $powerline_ext"
   fi
 
-  local ext
-  for ext in "$DOTFILES_DIR/pi/extensions"/*; do
-    if [[ -d "$ext" ]]; then
-      log "Instalando extensión Pi: $ext"
-      pi install "$ext" || warn "Falló instalación de extensión: $ext"
-    fi
-  done
+  # 2) El bundle pi-extensions es el paquete único que pi registra;
+  #    su index.ts carga las sub-extensiones (pi-powerline-footer, etc.).
+  local bundle="$DOTFILES_DIR/pi/extensions/pi-extensions"
+  if [[ -d "$bundle" && -f "$bundle/package.json" ]]; then
+    log "Instalando bundle Pi: $bundle"
+    pi install "$bundle" || warn "Falló instalación del bundle: $bundle"
+  else
+    warn "No se encontró el bundle de extensiones en: $bundle"
+  fi
+
+  # 3) Paquete npm externo: adaptador MCP para Pi.
+  log "Instalando pi-mcp-adapter desde npm"
+  pi install npm:pi-mcp-adapter || warn "Falló instalación de pi-mcp-adapter"
 }
 
 install_zim() {
