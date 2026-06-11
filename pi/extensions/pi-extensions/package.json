@@ -1,0 +1,31 @@
+{
+  "name": "pi-extensions-bundle",
+  "version": "1.0.0",
+  "description": "Unified bundle of pi coding agent extensions - single index.ts entrypoint for faster startup",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "coding-agent",
+    "extension",
+    "bundle"
+  ],
+  "license": "MIT",
+  "files": [
+    "index.ts",
+    "pi-*/**/*.ts",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@earendil-works/pi-ai": "0.75.5",
+    "@marckrenn/pi-sub-core": "^1.5.0",
+    "@marckrenn/pi-sub-shared": "^1.5.0",
+    "@mistralai/mistralai": "^2.2.1"
+  }
+}

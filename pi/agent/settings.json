@@ -9,10 +9,7 @@
   "npmCommand": [
     "bun"
   ],
-  "pi-screenshots": {
-    "sources": []
-  },
-  "powerline": "lucy",
+  "powerline": "lucy-cost",
   "powerlineVimMode": true,
   "showLastPrompt": false,
   "quietStartup": true
