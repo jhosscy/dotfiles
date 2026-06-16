@@ -1,0 +1,23 @@
+{
+  "name": "pi-mimo-provider",
+  "version": "0.1.0",
+  "description": "pi custom provider for Xiaomi MiMo (api.xiaomimimo.com)",
+  "type": "module",
+  "keywords": ["pi-package", "pi-extension", "mimo", "provider"],
+  "license": "MIT",
+  "files": ["index.ts"],
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.75.5"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.75.5"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}

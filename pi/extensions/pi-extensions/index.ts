@@ -20,6 +20,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // Providers (async factories - need await for model discovery)
 import commandcodeProvider from "./pi-commandcode-provider/index.ts";
+import tokenrouterProvider from "./pi-tokenrouter-provider/index.ts";
+import mimoProvider from "./pi-mimo-provider/index.ts";
 
 // UI/Editor extensions (sync factories)
 import powerlineFooter from "./pi-powerline-footer/index.ts";
@@ -45,6 +47,18 @@ const EXTENSIONS: ExtensionEntry[] = [
   {
     name: "commandcode-provider",
     factory: commandcodeProvider,
+    enabled: true,
+    phase: "provider",
+  },
+  {
+    name: "tokenrouter-provider",
+    factory: tokenrouterProvider,
+    enabled: true,
+    phase: "provider",
+  },
+  {
+    name: "mimo-provider",
+    factory: mimoProvider,
     enabled: true,
     phase: "provider",
   },
