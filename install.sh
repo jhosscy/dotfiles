@@ -54,12 +54,16 @@ install_apt_packages() {
 
   # shellcheck disable=SC1091
   source /etc/os-release
-  if [[ "${ID:-}" != "ubuntu" ]]; then
-    warn "Este installer inicial solo instala paquetes en Ubuntu. Distro detectada: ${ID:-unknown}"
-    return 0
-  fi
+  case "${ID:-}" in
+    ubuntu|debian)
+      log "Distro soportada detectada: ${PRETTY_NAME:-${ID}}"
+      ;;
+    *)
+      warn "Este installer solo instala paquetes en Debian/Ubuntu. Distro detectada: ${ID:-unknown}"
+      return 0
+      ;;
+  esac
 
-  log "Ubuntu detectado: ${PRETTY_NAME:-ubuntu}"
   sudo apt-get update
 
   local core=(
@@ -133,19 +137,24 @@ install_neovim_latest() {
     warn "Neovim actual parece viejo: $(nvim --version | head -n1). Instalo release moderna en ~/.local."
   fi
 
-  if [[ "$(uname -m)" != "x86_64" ]]; then
-    warn "Arquitectura no soportada para install automático de Neovim: $(uname -m)"
-    return 0
-  fi
+  local arch
+  case "$(uname -m)" in
+    x86_64)        arch="x86_64" ;;
+    aarch64|arm64) arch="arm64"  ;;
+    *)
+      warn "Arquitectura no soportada para install automático de Neovim: $(uname -m)"
+      return 0
+      ;;
+  esac
 
   mkdir -p "$HOME/.local/bin" "$HOME/.local/opt"
-  local url="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz"
+  local url="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-${arch}.tar.gz"
   local tmp
   tmp="$(mktemp -d)"
   curl -fsSL "$url" -o "$tmp/nvim.tar.gz"
-  rm -rf "$HOME/.local/opt/nvim-linux-x86_64"
+  rm -rf "$HOME/.local/opt/nvim-linux-${arch}"
   tar -xzf "$tmp/nvim.tar.gz" -C "$HOME/.local/opt"
-  ln -sfn "$HOME/.local/opt/nvim-linux-x86_64/bin/nvim" "$HOME/.local/bin/nvim"
+  ln -sfn "$HOME/.local/opt/nvim-linux-${arch}/bin/nvim" "$HOME/.local/bin/nvim"
   rm -rf "$tmp"
   log "Neovim instalado: $HOME/.local/bin/nvim"
 }
