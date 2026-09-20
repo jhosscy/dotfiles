@@ -145,7 +145,7 @@
       ]
     },
     "nebiusUs": {
-      "baseUrl": "https://api.tokenfactory.us-central1.nebius.com/v1/",
+      "baseUrl": "https://api.tokenfactory.us-north1.nebius.com/v1/",
       "api": "openai-completions",
       "apiKey": "$NEBIUS_API_KEY",
       "compat": {
@@ -156,17 +156,18 @@
       },
       "models": [
         {
-          "id": "MiniMaxAI/MiniMax-M3",
-          "name": "MiniMax M3",
+          "id": "zai-org/GLM-5.3-Flash",
+          "name": "GLM-5.3 Flash",
           "reasoning": true,
           "input": [
-            "text"
+            "text",
+            "image"
           ],
           "contextWindow": 1048576,
           "maxTokens": 256000,
           "cost": {
-            "input": 0.3,
-            "output": 1.2,
+            "input": 0.15,
+            "output": 0.50,
             "cacheRead": 0,
             "cacheWrite": 0
           },
@@ -545,19 +546,16 @@
       ]
     },
     "modalCloud": {
-      "baseUrl": "https://jhosscy--qwen36-llamacpp-llamacppserver.us-east.modal.direct/v1",
+      "baseUrl": "https://jhosscy--models-uncensored-llamacppserver.us-east.modal.direct/v1",
       "api": "openai-completions",
       "apiKey": "dummy",
       "models": [
         {
-          "id": "unsloth/Qwen3.6-27B-Uncensored",
-          "name": "Qwen3.6 27B",
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 262144,
-          "maxTokens": 262144
+          "id": "Qwen3.8-27B-Uncensored",
+          "name": "Qwen3.8 27B",
+          "input": ["text"],
+          "contextWindow": 124000,
+          "maxTokens": 124000
         }
       ]
     }
