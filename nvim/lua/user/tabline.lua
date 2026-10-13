@@ -1,8 +1,9 @@
 vim.opt.showtabline = 1
 vim.opt.tabline = "%!v:lua.UserTabLine()"
 
+local ok, icons = pcall(require, "mini.icons")
+
 local function file_icon(filename)
-  local ok, icons = pcall(require, "mini.icons")
   if not ok then
     return ""
   end

@@ -1,3 +1,5 @@
+require('user.icons')
+
 vim.cmd('packadd lualine.nvim')
 
 local ok, lualine = pcall(require, 'lualine')
@@ -48,6 +50,15 @@ lualine.setup({
       statusline = {},
       winbar = {},
     },
+    refresh = {
+      statusline = 250, -- muestrea más seguido que el default (1000)
+      events = {
+        'WinEnter', 'BufEnter', 'BufWritePost', 'SessionLoadPost',
+        'FileChangedShellPost', 'VimResized', 'Filetype',
+        'CursorMoved', 'CursorMovedI', 'ModeChanged',
+        'Progress',
+      },
+    },
   },
 
   sections = {
@@ -76,6 +87,11 @@ lualine.setup({
         },
       },
       'diff',
+      'searchcount',
+      {
+        function() return (vim.ui.progress_status():gsub('%s+$', '')) end,
+        cond = function() return vim.ui.progress_status() ~= '' end,
+      },
       'filetype',
     },
     lualine_y = { 'progress' },
