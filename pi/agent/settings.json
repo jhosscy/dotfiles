@@ -4,13 +4,16 @@
   },
   "showHardwareCursor": false,
   "editorPaddingX": 0,
-  "theme": "dark",
+  "theme": "system",
   "hideThinkingBlock": false,
   "npmCommand": [
     "bun"
   ],
-  "powerline": "lucy-cost",
+  "defaultThinkingLevel": "high",
+  "powerline": "lucy-mini",
   "powerlineVimMode": true,
   "showLastPrompt": false,
-  "quietStartup": true
+  "quietStartup": "header"
+  "tuiMode": "regular",
+  "enableInstallTelemetry": false
 }
