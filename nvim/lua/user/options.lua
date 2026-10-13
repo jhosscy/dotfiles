@@ -84,7 +84,7 @@ vim.opt.clipboard = "unnamedplus" -- Use the system clipboard (+ register) for a
 -- =====================================================================
 -- COMPLETION (PUM & COMMAND-LINE)
 -- =====================================================================
-vim.opt.completeopt = "menu,menuone,noselect,popup,fuzzy" -- Neovim 0.12+: popup docs + fuzzy matching
+vim.opt.completeopt = "menu,menuone,noselect,fuzzy,nosort" -- Neovim 0.12+: popup docs + fuzzy matching
 vim.opt.pumheight = 5           -- Maximum number of items to show in the popup menu
 vim.opt.pumwidth = 15           -- Minimum width for the popup menu
 vim.opt.pummaxwidth = 80        -- Neovim 0.12+: maximum width for the popup menu

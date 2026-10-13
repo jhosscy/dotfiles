@@ -2,7 +2,7 @@ local autosave = {
   enabled = false,
   group = vim.api.nvim_create_augroup("UserAutosave", { clear = true }),
   timer = nil,
-  delay = 100, -- 300ms debounce: equilibrio entre velocidad y rendimiento
+  delay = 100,
 }
 -- Verificar si el buffer es guardable
 local function can_save()
