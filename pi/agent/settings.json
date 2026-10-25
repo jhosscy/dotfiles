@@ -13,7 +13,7 @@
   "powerline": "lucy-mini",
   "powerlineVimMode": true,
   "showLastPrompt": false,
-  "quietStartup": "header"
+  "quietStartup": "header",
   "tuiMode": "regular",
   "enableInstallTelemetry": false
 }
