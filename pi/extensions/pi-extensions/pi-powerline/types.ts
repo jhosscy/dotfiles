@@ -1,8 +1,10 @@
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai";
 import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
 
 // Theme color - either a pi theme color name or a custom hex color
 export type ColorValue = ThemeColor | `#${string}`;
-export type ThemeLike = Pick<Theme, "fg">;
+export type ThemeLike = Pick<Theme, "fg" | "style">;
 
 // Semantic color names for segments
 export type SemanticColor =
@@ -30,7 +32,6 @@ export type BuiltinStatusLineSegmentId =
   | "model"
   | "path"
   | "git"
-  | "subagents"
   | "token_in"
   | "token_out"
   | "token_total"
@@ -76,16 +77,24 @@ export type StatusLinePreset =
   | "custom"
   | "lucy"
   | "lucy-cost"
-  | "lucy-mini";
+  | "lucy-mini"
+  | "native-parity";
 
 // Per-segment options
 export interface StatusLineSegmentOptions {
   model?: { showThinkingLevel?: boolean };
-  path?: { 
+  path?: {
     mode?: "basename" | "abbreviated" | "full";
     maxLength?: number;
   };
-  git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean; showAheadBehind?: boolean };
+  git?: {
+    showBranch?: boolean;
+    showStaged?: boolean;
+    showUnstaged?: boolean;
+    showUntracked?: boolean;
+    showAheadBehind?: boolean;
+    polling?: "full" | "branch" | "off";
+  };
   time?: { format?: "12h" | "24h"; showSeconds?: boolean };
   tokens?: { format?: "exact" | "compact"; showUnitPrices?: boolean };
   cost?: { mode?: "branch" | "global" };
@@ -126,7 +135,8 @@ export interface SeparatorDef {
   };
 }
 
-// Git status data
+// Git status data. `branch` comes from pi's footer data provider, the rest from
+// this extension's async working-tree probe.
 export interface GitStatus {
   branch: string | null;
   staged: number;
@@ -136,7 +146,7 @@ export interface GitStatus {
   behind: number;
 }
 
-// Usage statistics
+// Usage statistics, in the shape pi's own footer aggregates them.
 export interface UsageStats {
   input: number;
   output: number;
@@ -145,6 +155,8 @@ export interface UsageStats {
   cost: number;
 }
 
+// Per-million rates of the selected model. Informational only: billed cost is
+// always pi's `usage.cost.total`, never a recomputation from these numbers.
 export interface ModelCost {
   input: number;
   output: number;
@@ -166,43 +178,43 @@ export interface SubscriptionUsage {
 
 // Context passed to segment render functions
 export interface SegmentContext {
-  // From pi-mono
-  model: { id: string; name?: string; reasoning?: boolean; contextWindow?: number } | undefined;
-  thinkingLevel: string;
-  sessionId: string | undefined;
-  
-  // Computed
+  // Native model/session data
+  model: Model<any> | undefined;
+  thinkingLevel: ThinkingLevel;
+  sessionId: string;
+  sessionName?: string;
+  cwd: string;
+  sessionStartTime: number;
+  // Native usage accounting
+  /** Whole-session totals, the same numbers pi's footer shows. */
   usageStats: UsageStats;
-  /** Cost across ALL session entries (all branches). Used when options.cost.mode === "global". */
-  globalCost?: number;
+  /** Active-branch totals, for `cost.mode: "branch"`. */
+  branchUsageStats: UsageStats;
   /**
-   * Prompt cache hit rate of the latest assistant message across all session entries
-   * (not just the active branch), matching pi's native footer behaviour. Expressed as
-   * a percentage in [0, 100]. Undefined when the latest message has no cache activity.
+   * Prompt cache hit rate of the latest assistant message across all session
+   * entries. Undefined when that message has no cache activity, matching pi.
    */
   latestCacheHitRate?: number;
   modelCost: ModelCost;
-  contextPercent: number;
-  contextTokens: number;
+  // Native context accounting. `tokens`/`percent` stay null after a compaction
+  // until the next LLM response, exactly as pi reports them.
+  contextTokens: number | null;
+  contextPercent: number | null;
   contextWindow: number;
   responseModel?: string;
   autoCompactEnabled: boolean;
-  customCompactionEnabled: boolean;
+  // Subscription
   usingSubscription: boolean;
   subscriptionUsage?: SubscriptionUsage;
-  sessionStartTime: number;
-  
   // Git
   git: GitStatus;
-  
   // Extension statuses
+  providerCount: number;
   extensionStatuses: ReadonlyMap<string, string>;
   hiddenExtensionStatusKeys: ReadonlySet<string>;
   customItemsById: ReadonlyMap<string, CustomStatusItem>;
-  
   // Options
   options: StatusLineSegmentOptions;
-  
   // Theming
   theme: ThemeLike;
   colors: ColorScheme;

@@ -7,7 +7,7 @@ import type {
   StatusLinePreset,
   StatusLineSegmentId,
   StatusLineSegmentOptions,
-} from "./types.ts";
+} from "./types.js";
 
 export const GIT_POLLING_MODES = ["full", "branch", "off"] as const;
 export type GitPollingMode = (typeof GIT_POLLING_MODES)[number];
@@ -161,11 +161,18 @@ export function getNotificationExtensionStatuses(
 }
 
 export function normalizeExtensionStatusValue(value: string): string | null {
-  if (!value || visibleWidth(value) <= 0) {
+  if (!value) {
+    return null;
+  }
+  // Same single-line sanitization pi's footer applies: no newlines, tabs or
+  // other control characters in the middle of a status.
+  // eslint-disable-next-line no-control-regex
+  const singleLine = value.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/ +/g, " ").trim();
+  if (!singleLine || visibleWidth(singleLine) <= 0) {
     return null;
   }
 
-  const stripped = value.replace(/(\x1b\[[0-9;]*m|\s|·|[|])+$/, "");
+  const stripped = singleLine.replace(/(\x1b\[[0-9;]*m|\s|·|[|])+$/, "");
   return visibleWidth(stripped) > 0 ? stripped : null;
 }
 
@@ -194,7 +201,7 @@ function normalizeGitOptions(raw: unknown): StatusLineSegmentOptions["git"] | un
     if (key === "polling") {
       const mode = normalizeGitPollingMode(value);
       if (mode !== undefined) {
-        (normalized as Record<string, unknown>).polling = mode;
+        normalized.polling = mode;
         touched = true;
       }
       continue;

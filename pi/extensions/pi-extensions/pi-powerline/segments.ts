@@ -1,10 +1,9 @@
 import { hostname as osHostname } from "node:os";
 import { basename } from "node:path";
-import { visibleWidth } from "@earendil-works/pi-tui";
-import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.ts";
-import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.ts";
-import { fg, rainbow, applyColor } from "./theme.ts";
-import { getIcons, SEP_DOT, getThinkingText } from "./icons.ts";
+import type { BuiltinStatusLineSegmentId, RenderedSegment, SegmentContext, SemanticColor, StatusLineSegment, StatusLineSegmentId } from "./types.js";
+import { normalizeCompactExtensionStatus, normalizeExtensionStatusValue } from "./powerline-config.js";
+import { fg, rainbow, applyColor } from "./theme.js";
+import { getIcons, hasNerdFonts, SEP_DOT, getThinkingText } from "./icons.js";
 
 function color(ctx: SegmentContext, semantic: SemanticColor, text: string): string {
   return fg(ctx.theme, semantic, text, ctx.colors);
@@ -23,6 +22,11 @@ function formatTokens(n: number, mode: "exact" | "compact" = "exact"): string {
   if (n >= 1_000_000) return `${parseFloat((n / 1_000_000).toFixed(1))}M`;
   if (n >= 1_000) return `${parseFloat((n / 1_000).toFixed(1))}k`;
   return n.toLocaleString("en-US");
+}
+
+/** Context token count, or `?` when pi reports it as unknown (after compaction). */
+function formatContextTokens(n: number | null, mode: "exact" | "compact"): string {
+  return n === null ? "?" : formatTokens(n, mode);
 }
 
 function formatDuration(ms: number): string {
@@ -109,7 +113,7 @@ const pathSegment: StatusLineSegment = {
     const opts = ctx.options.path ?? {};
     const mode = opts.mode ?? "basename";
 
-    let pwd = process.cwd();
+    let pwd = ctx.cwd;
     const home = process.env.HOME || process.env.USERPROFILE;
 
     if (mode === "basename") {
@@ -204,6 +208,12 @@ const gitSegment: StatusLineSegment = {
 const thinkingSegment: StatusLineSegment = {
   id: "thinking",
   render(ctx) {
+    // Models without reasoning have no thinking level; pi's footer hides the
+    // indicator for them too.
+    if (!ctx.model?.reasoning) {
+      return { content: "", visible: false };
+    }
+
     const level = ctx.thinkingLevel || "off";
 
     const levelText: Record<string, string> = {
@@ -213,12 +223,13 @@ const thinkingSegment: StatusLineSegment = {
       medium: "med",
       high: "high",
       xhigh: "xhigh",
+      max: "max",
     };
     const label = levelText[level] || level;
     const content = `think:${label}`;
 
-    if (level === "high" || level === "xhigh") {
-      return { content: rainbow(content), visible: true };
+    if (level === "high" || level === "xhigh" || level === "max") {
+      return { content: rainbow(ctx.theme, content), visible: true };
     }
 
     if (level === "minimal") {
@@ -232,16 +243,6 @@ const thinkingSegment: StatusLineSegment = {
     }
 
     return { content: color(ctx, "thinking", content), visible: true };
-  },
-};
-
-const subagentsSegment: StatusLineSegment = {
-  id: "subagents",
-  render() {
-    // Note: pi-mono doesn't have subagent tracking built-in
-    // This would require extension state management
-    // For now, return not visible
-    return { content: "", visible: false };
   },
 };
 
@@ -301,15 +302,18 @@ function formatCost(n: number): string {
 const costSegment: StatusLineSegment = {
   id: "cost",
   render(ctx) {
-    const isGlobal = ctx.options.cost?.mode === "global";
-    const cost = isGlobal ? (ctx.globalCost ?? ctx.usageStats.cost) : ctx.usageStats.cost;
+    // Whole-session totals are pi's native behaviour; `branch` opts into the
+    // active branch only. The amount is always pi's billed `usage.cost.total`.
+    const isBranch = ctx.options.cost?.mode === "branch";
+    const cost = isBranch ? ctx.branchUsageStats.cost : ctx.usageStats.cost;
     const usingSubscription = ctx.usingSubscription;
 
     if (!cost && !usingSubscription) {
       return { content: "", visible: false };
     }
 
-    const costDisplay = usingSubscription ? "(sub)" : formatCost(cost);
+    // pi prints `$cost (sub)`; the amount stays visible for subscription users.
+    const costDisplay = `${formatCost(cost)}${usingSubscription ? " (sub)" : ""}`;
     return { content: color(ctx, "cost", costDisplay), visible: true };
   },
 };
@@ -317,8 +321,6 @@ const costSegment: StatusLineSegment = {
 const contextPctSegment: StatusLineSegment = {
   id: "context_pct",
   render(ctx) {
-    if (ctx.customCompactionEnabled) return { content: "", visible: false };
-
     const icons = getIcons();
     const tokens = ctx.contextTokens;
     const window = ctx.contextWindow;
@@ -326,13 +328,15 @@ const contextPctSegment: StatusLineSegment = {
 
     const tokenFormat = ctx.options.tokens?.format ?? "exact";
     const autoIcon = ctx.autoCompactEnabled && icons.auto ? ` ${icons.auto}` : "";
-    const text = `${formatTokens(tokens, tokenFormat)}/${formatTokens(window, tokenFormat)}${autoIcon}`;
+    // After a compaction pi reports `tokens: null` until the next response; show
+    // `?/window` instead of a stale pre-compaction number.
+    const text = `${formatContextTokens(tokens, tokenFormat)}/${formatTokens(window, tokenFormat)}${autoIcon}`;
 
     // Icon outside color, text inside - use semantic colors for thresholds
     let content: string;
-    if (pct > 90) {
+    if (pct !== null && pct > 90) {
       content = withIcon(icons.context, color(ctx, "contextError", text));
-    } else if (pct > 70) {
+    } else if (pct !== null && pct > 70) {
       content = withIcon(icons.context, color(ctx, "contextWarn", text));
     } else {
       content = withIcon(icons.context, color(ctx, "context", text));
@@ -345,8 +349,6 @@ const contextPctSegment: StatusLineSegment = {
 const contextTotalSegment: StatusLineSegment = {
   id: "context_total",
   render(ctx) {
-    if (ctx.customCompactionEnabled) return { content: "", visible: false };
-
     const icons = getIcons();
     const window = ctx.contextWindow;
     if (!window) return { content: "", visible: false };
@@ -398,8 +400,8 @@ const sessionSegment: StatusLineSegment = {
   id: "session",
   render(ctx) {
     const icons = getIcons();
-    const sessionId = ctx.sessionId;
-    const display = sessionId?.slice(0, 8) || "new";
+    // Named sessions are what pi shows; fall back to the short id.
+    const display = ctx.sessionName?.trim() || ctx.sessionId?.slice(0, 8) || "new";
 
     return { content: withIcon(icons.session, display), visible: true };
   },
@@ -455,12 +457,19 @@ const cacheWriteSegment: StatusLineSegment = {
 const cacheHitRateSegment: StatusLineSegment = {
   id: "cache_hit_rate",
   render(ctx) {
-    if (ctx.latestCacheHitRate === undefined) return { content: "", visible: false };
+    // pi only prints CH when the session actually used the prompt cache; a
+    // message without cache activity must not render as `0.0%`.
+    const hasCacheActivity = ctx.usageStats.cacheRead > 0 || ctx.usageStats.cacheWrite > 0;
+    if (!hasCacheActivity || ctx.latestCacheHitRate === undefined) {
+      return { content: "", visible: false };
+    }
 
     // Cache hit rate is bounded in [0, 100]. Cap defensively to avoid negative
     // values that would slip in if a provider reports negative cacheRead.
     const value = Math.max(0, Math.min(100, ctx.latestCacheHitRate));
-    const content = `\uF49B ${value.toFixed(1)}%`;
+    // pi prints `CH92.0%`; keep that label where Nerd Fonts are not available.
+    const label = hasNerdFonts() ? "\uF49B" : "CH";
+    const content = `${label} ${value.toFixed(1)}%`;
     return { content: color(ctx, "tokens", content), visible: true };
   },
 };
@@ -525,7 +534,6 @@ export const SEGMENTS: Record<BuiltinStatusLineSegmentId, StatusLineSegment> = {
   path: pathSegment,
   git: gitSegment,
   thinking: thinkingSegment,
-  subagents: subagentsSegment,
   token_in: tokenInSegment,
   token_out: tokenOutSegment,
   token_total: tokenTotalSegment,
@@ -565,12 +573,16 @@ function renderCustomSegment(id: `custom:${string}`, ctx: SegmentContext): Rende
   return { content, visible: true };
 }
 
+function isCustomSegmentId(id: StatusLineSegmentId): id is `custom:${string}` {
+  return id.startsWith("custom:");
+}
+
 export function renderSegment(id: StatusLineSegmentId, ctx: SegmentContext): RenderedSegment {
-  if (id.startsWith("custom:")) {
+  if (isCustomSegmentId(id)) {
     return renderCustomSegment(id, ctx);
   }
 
-  const segment = SEGMENTS[id];
+  const segment: StatusLineSegment | undefined = SEGMENTS[id];
   if (!segment) {
     return { content: "", visible: false };
   }

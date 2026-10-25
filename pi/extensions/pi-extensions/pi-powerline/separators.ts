@@ -52,7 +52,7 @@ export function getSeparator(style: StatusLineSeparatorStyle): SeparatorDef {
       return { left: "✦", right: "✦" };
 
     case "soft":
-      return { left: "\ue0bd", right: "\ue0b4" };
+      return { left: " \uf054 ", right: " \uf054 " };
 
     default:
       return getSeparator("powerline-thin");

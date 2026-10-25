@@ -18,14 +18,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 // Extension imports
 // ============================================================
 
-// Providers (async factories - need await for model discovery)
-//import commandcodeProvider from "./pi-commandcode-provider/index.ts";
-//import tokenrouterProvider from "./pi-tokenrouter-provider/index.ts";
-//import mimoProvider from "./pi-mimo-provider/index.ts";
-
 // UI/Editor extensions (sync factories)
-import powerlineFooter from "./pi-powerline-footer/index.ts";
+import powerlineFooter from "./pi-powerline/index.ts";
 import vimEditor from "./pi-vim-editor/index.ts";
+import sshRemote from "./pi-ssh-remote/index.ts";
 import permissionGate from "./permission-gate.ts";
 import protectedPaths from "./protected-paths.ts";
 
@@ -44,24 +40,6 @@ interface ExtensionEntry {
 
 const EXTENSIONS: ExtensionEntry[] = [
   // Phase 1: Providers (async, must complete before model registry is used)
-  /*{
-    name: "commandcode-provider",
-    factory: commandcodeProvider,
-    enabled: true,
-    phase: "provider",
-  },
-  {
-    name: "tokenrouter-provider",
-    factory: tokenrouterProvider,
-    enabled: true,
-    phase: "provider",
-  },
-  {
-    name: "mimo-provider",
-    factory: mimoProvider,
-    enabled: true,
-    phase: "provider",
-  },*/
 
   // Phase 2: UI/Editor extensions (sync or async, independent)
   {
@@ -85,6 +63,12 @@ const EXTENSIONS: ExtensionEntry[] = [
   {
     name: "protected-paths",
     factory: protectedPaths,
+    enabled: true,
+    phase: "ui",
+  },
+  {
+    name: "ssh-remote",
+    factory: sshRemote,
     enabled: true,
     phase: "ui",
   },

@@ -59,7 +59,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
 
   full: {
-    leftSegments: ["hostname", "model", "thinking", "path", "git", "subagents"],
+    leftSegments: ["hostname", "model", "thinking", "path", "git"],
     rightSegments: ["token_in", "token_out", "cache_read", "subscription", "cost", "context_pct", "time_spent", "time", "extension_statuses"],
     separator: "powerline",
     colors: DEFAULT_COLORS,
@@ -72,7 +72,7 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
 
   nerd: {
-    leftSegments: ["hostname", "model", "thinking", "path", "git", "session", "subagents"],
+    leftSegments: ["hostname", "model", "thinking", "path", "git", "session"],
     rightSegments: ["token_in", "token_out", "cache_read", "cache_write", "cost", "context_pct", "context_total", "time_spent", "time", "extension_statuses"],
     separator: "powerline",
     colors: NERD_COLORS,
@@ -105,14 +105,13 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
 
   lucy: {
-    leftSegments: ["hostname", "model", "thinking", "path", "git"],
-    rightSegments: ["cache_read", "cache_write", "token_in", "token_out", "token_total"],
-    secondarySegments: ["cost", "context_pct", "extension_statuses"],
+    leftSegments: ["model", "thinking", "git"],
+    rightSegments: ["cache_read", "cache_write", "cache_hit_rate", "token_in", "token_out"],
+    secondarySegments: ["token_total", "cost", "context_pct", "extension_statuses"],
     separator: "soft",
     colors: NERD_COLORS,
     segmentOptions: {
       model: { showThinkingLevel: false },
-      path: { mode: "abbreviated", maxLength: 50 },
       git: { showBranch: true, showAheadBehind: true, showStaged: true, showUnstaged: true, showUntracked: true },
       tokens: { format: "compact", showUnitPrices: false },
       cost: { mode: "global" },
@@ -120,9 +119,9 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
 
   "lucy-cost": {
-    leftSegments: ["model", "thinking"],
-    rightSegments: ["cache_read", "cache_write", "cache_hit_rate", "token_in", "token_out", "token_total"],
-    secondarySegments: ["subscription", "cost", "context_pct"],
+    leftSegments: [],
+    rightSegments: ["cache_read", "cache_write", "cache_hit_rate", "token_in", "token_out"],
+    secondarySegments: ["token_total", "subscription", "cost", "context_pct"],
     separator: "soft",
     colors: NERD_COLORS,
     segmentOptions: {
@@ -133,13 +132,39 @@ export const PRESETS: Record<StatusLinePreset, PresetDef> = {
   },
   "lucy-mini": {
     leftSegments: ["model", "git"],
-    rightSegments: ["token_total", "cost", "context_pct"],
-    secondarySegments: ["extension_statuses"],
+    rightSegments: ["token_total", "cost"],
+    secondarySegments: [ "context_pct", "extension_statuses"],
     separator: "soft",
     colors: NERD_COLORS,
     segmentOptions: {
       model: { showThinkingLevel: false },
       git: { showBranch: true, showAheadBehind: false, showStaged: false, showUnstaged: false, showUntracked: false },
+      tokens: { format: "compact", showUnitPrices: false },
+      cost: { mode: "global" },
+    },
+  },
+  // pi footer parity: same numbers pi itself prints, in a powerline shape.
+  "native-parity": {
+    leftSegments: [
+      "model",
+      "thinking",
+      "path",
+      "git",
+      "token_in",
+      "token_out",
+      "cache_read",
+      "cache_write",
+      "cache_hit_rate",
+      "cost",
+      "context_pct",
+    ],
+    rightSegments: ["session", "extension_statuses"],
+    separator: "powerline-thin",
+    colors: DEFAULT_COLORS,
+    segmentOptions: {
+      model: { showThinkingLevel: false },
+      path: { mode: "abbreviated", maxLength: 50 },
+      git: { showBranch: true, showStaged: true, showUnstaged: true, showUntracked: true },
       tokens: { format: "compact", showUnitPrices: false },
       cost: { mode: "global" },
     },

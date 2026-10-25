@@ -1,0 +1,27 @@
+{
+  "name": "pi-powerline",
+  "version": "0.1.0",
+  "description": "Powerline status line for pi, driven by pi's native usage and context accounting",
+  "type": "module",
+  "files": [
+    "*.ts"
+  ],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "powerline",
+    "status-line"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}

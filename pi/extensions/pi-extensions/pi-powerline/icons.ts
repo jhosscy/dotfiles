@@ -1,4 +1,4 @@
-import { loadThemeConfig } from "./theme.ts";
+import { getIconOverrides } from "./theme.js";
 
 export interface IconSet {
   pi: string;
@@ -21,7 +21,7 @@ export interface IconSet {
 }
 
 // Separator characters
-export const SEP_DOT = " · ";
+export const SEP_DOT = "·";
 
 // Thinking level display text (Unicode/ASCII)
 export const THINKING_TEXT_UNICODE: Record<string, string> = {
@@ -30,6 +30,7 @@ export const THINKING_TEXT_UNICODE: Record<string, string> = {
   medium: "[med]",
   high: "[high]",
   xhigh: "[xhi]",
+  max: "[max]",
 };
 
 // Thinking level display text (Nerd Fonts - with icons)
@@ -39,6 +40,7 @@ export const THINKING_TEXT_NERD: Record<string, string> = {
   medium: "\u{F192} med",    // dot circle
   high: "\u{F111} high",     // circle
   xhigh: "\u{F06D} xhi",     // fire
+  max: "\u{F06D} max",       // fire
 };
 
 // Get thinking text based on font support
@@ -61,9 +63,9 @@ export const NERD_ICONS: IconSet = {
   cost: "\uF155",       // nf-fa-dollar
   time: "\uF017",       // nf-fa-clock_o
   agents: "\uF0C0",     // nf-fa-users
-  cache: "\uF1C0",      // nf-fa-database (cache)
-  input: "\uF090",      // nf-fa-sign_in (input arrow)
-  output: "\uF08B",     // nf-fa-sign_out (output arrow)
+  cache: "\udb85\ude32",
+  input: "\uf062",
+  output: "\uf063",
   host: "\uF109",       // nf-fa-laptop (host)
   session: "\uF550",    // nf-md-identifier (session id)
   auto: "\u{F0068}",    // nf-md-lightning_bolt (auto-compact)
@@ -98,10 +100,11 @@ function sanitizeUserIconOverrides(value: unknown): PartialIconSet {
     return {};
   }
 
+  const overrides = value as Record<string, unknown>;
   const sanitized: PartialIconSet = {};
   const validKeys = Object.keys(NERD_ICONS) as Array<keyof IconSet>;
   for (const key of validKeys) {
-    const icon = value[key];
+    const icon = overrides[key];
     if (typeof icon === "string") {
       sanitized[key] = icon;
     }
@@ -172,7 +175,7 @@ export function getIcons(): IconSet {
   const baseIcons = hasNerdFonts() ? NERD_ICONS : ASCII_ICONS;
   return {
     ...baseIcons,
-    ...sanitizeUserIconOverrides(loadThemeConfig().icons),
+    ...sanitizeUserIconOverrides(getIconOverrides()),
   };
 }
 
